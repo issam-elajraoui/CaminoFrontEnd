@@ -88,7 +88,6 @@ struct RideSearchView: View {
                 }
             }
         }
-//        .ignoresSafeArea(.keyboard)
         .alert("Error", isPresented: $viewModel.showError) {
             Button("OK") { }
         } message: {
@@ -101,6 +100,23 @@ struct RideSearchView: View {
                     viewModel.selectDriver(driver)
                 }
             )
+        }
+        .sheet(isPresented: $viewModel.showLocationPermission) {
+            LocationPermissionView(
+                onPermissionGranted: {
+                    viewModel.onLocationPermissionGranted()
+                },
+                onCancel: {
+                    viewModel.showLocationPermission = false
+                }
+            )
+        }
+        .onAppear {
+            viewModel.onViewAppear()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            // Vérifier les permissions quand l'utilisateur revient de l'app Settings
+            viewModel.recheckLocationPermissions()
         }
     }
     
@@ -115,8 +131,10 @@ struct RideSearchView: View {
                 .tint(annotation.type.color)
             }
             
-            // Position utilisateur
-            UserAnnotation()
+            // Position utilisateur si disponible
+            if viewModel.showUserLocation {
+                UserAnnotation()
+            }
         }
         .mapStyle(.standard)
         .onTapGesture(coordinateSpace: .local) { location in
@@ -126,11 +144,16 @@ struct RideSearchView: View {
             VStack {
                 HStack {
                     Button("My Location") {
-                        viewModel.centerOnUserLocation()
+                        Task {
+                            await viewModel.centerOnUserLocation()
+                        }
                     }
-                    .padding(.horizontal)
-                    .background(Color.white.opacity(0.8))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.white.opacity(0.9))
                     .cornerRadius(8)
+                    .shadow(radius: 2)
+                    .disabled(!viewModel.isLocationAvailable)
                     Spacer()
                 }
                 Spacer()
@@ -168,6 +191,7 @@ struct RideSearchView: View {
             RoundedRectangle(cornerRadius: 14)
                 .stroke(Color.gray.opacity(0.3), lineWidth: 1)
         )
+        .shadow(radius: 2)
     }
     
     // MARK: - Section formulaire de recherche compacte
@@ -181,13 +205,54 @@ struct RideSearchView: View {
             
             ScrollView {
                 VStack(spacing: 12) {
-                    // Titre
-                    Text(viewModel.translations["findRide"] ?? "Find a Ride")
-                        .font(.title3)
-                        .fontWeight(.bold)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    // Titre avec indicateur GPS
+                    HStack {
+                        Text(viewModel.translations["findRide"] ?? "Find a Ride")
+                            .font(.title3)
+                            .fontWeight(.bold)
+                        
+                        Spacer()
+                        
+                        // Indicateur statut GPS
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(viewModel.isLocationAvailable ? Color.green : Color.red)
+                                .frame(width: 8, height: 8)
+                            
+                            Text(viewModel.isLocationAvailable ?
+                                 (viewModel.translations["gpsEnabled"] ?? "GPS") :
+                                 (viewModel.translations["gpsDisabled"] ?? "No GPS"))
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+                    
+                    // Message GPS si désactivé
+                    if !viewModel.isLocationAvailable {
+                        HStack {
+                            Image(systemName: "location.slash")
+                                .foregroundColor(.orange)
+                            
+                            Text(viewModel.translations["enableGpsMessage"] ?? "Enable GPS for better location services")
+                                .font(.caption)
+                                .foregroundColor(.orange)
+                            
+                            Spacer()
+                            
+                            Button(viewModel.translations["enableGps"] ?? "Enable") {
+                                viewModel.requestLocationPermission()
+                            }
+                            .font(.caption)
+                            .foregroundColor(.red)
+                        }
                         .padding(.horizontal, 20)
-                        .padding(.top, 8)
+                        .padding(.vertical, 8)
+                        .background(Color.orange.opacity(0.1))
+                        .cornerRadius(8)
+                        .padding(.horizontal, 20)
+                    }
                     
                     // Champs de localisation compacts
                     VStack(spacing: 8) {
@@ -196,6 +261,8 @@ struct RideSearchView: View {
                             placeholder: viewModel.translations["pickupLocation"] ?? "Pickup Location",
                             errorMessage: viewModel.pickupError,
                             isPickup: true,
+                            locationService: viewModel.locationService,
+                            language: viewModel.currentLanguage,
                             onLocationSelected: { location in
                                 viewModel.setPickupLocation(location)
                             }
@@ -206,6 +273,8 @@ struct RideSearchView: View {
                             placeholder: viewModel.translations["destination"] ?? "Destination",
                             errorMessage: viewModel.destinationError,
                             isPickup: false,
+                            locationService: viewModel.locationService,
+                            language: viewModel.currentLanguage,
                             onLocationSelected: { location in
                                 viewModel.setDestinationLocation(location)
                             }
@@ -327,13 +396,18 @@ struct RideSearchView: View {
     }
 }
 
-// MARK: - Champ de localisation compact
+// MARK: - Champ de localisation compact amélioré
 struct CompactLocationField: View {
     @Binding var text: String
     let placeholder: String
     let errorMessage: String
     let isPickup: Bool
+    let locationService: LocationService
+    let language: String
     let onLocationSelected: (CLLocationCoordinate2D) -> Void
+    
+    @StateObject private var autocompleteManager = AddressAutocompleteManager(locationService: LocationService())
+    @State private var showSuggestions = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -350,14 +424,32 @@ struct CompactLocationField: View {
                         if sanitized != newValue {
                             text = sanitized
                         }
+                        
+                        // Déclencher l'autocomplétion
+                        if sanitized.count >= 3 {
+                            autocompleteManager.searchAddresses(for: sanitized, language: language)
+                            showSuggestions = true
+                        } else {
+                            autocompleteManager.clearSuggestions()
+                            showSuggestions = false
+                        }
                     }
                 
                 if !text.isEmpty {
-                    Button(action: { text = "" }) {
+                    Button(action: {
+                        text = ""
+                        autocompleteManager.clearSuggestions()
+                        showSuggestions = false
+                    }) {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundColor(.gray)
                             .font(.system(size: 14))
                     }
+                }
+                
+                if autocompleteManager.isSearching {
+                    ProgressView()
+                        .scaleEffect(0.7)
                 }
             }
             .padding(.horizontal, 10)
@@ -369,10 +461,56 @@ struct CompactLocationField: View {
                     .stroke(errorMessage.isEmpty ? Color.clear : Color.red, lineWidth: 1)
             )
             
+            // Suggestions d'autocomplétion
+            if showSuggestions && !autocompleteManager.suggestions.isEmpty {
+                VStack(spacing: 0) {
+                    ForEach(autocompleteManager.suggestions.prefix(3), id: \.id) { suggestion in
+                        Button(action: {
+                            text = suggestion.displayText
+                            onLocationSelected(suggestion.coordinate)
+                            showSuggestions = false
+                            autocompleteManager.clearSuggestions()
+                        }) {
+                            HStack {
+                                Image(systemName: "mappin.circle.fill")
+                                    .foregroundColor(.red)
+                                    .font(.caption)
+                                
+                                Text(suggestion.displayText)
+                                    .font(.caption)
+                                    .foregroundColor(.primary)
+                                    .multilineTextAlignment(.leading)
+                                
+                                Spacer()
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        
+                        if suggestion.id != autocompleteManager.suggestions.prefix(3).last?.id {
+                            Divider()
+                        }
+                    }
+                }
+                .background(Color.white)
+                .cornerRadius(6)
+                .shadow(radius: 4)
+                .padding(.leading, 18)
+            }
+            
+            // Messages d'erreur
             if !errorMessage.isEmpty {
                 Text(errorMessage)
                     .font(.caption2)
                     .foregroundColor(.red)
+                    .padding(.leading, 18)
+            }
+            
+            if let searchError = autocompleteManager.searchError {
+                Text(searchError)
+                    .font(.caption2)
+                    .foregroundColor(.orange)
                     .padding(.leading, 18)
             }
         }
@@ -389,13 +527,14 @@ struct CompactLocationField: View {
     }
 }
 
-
-// MARK: - ViewModel de recherche de course
+// MARK: - ViewModel de recherche de course amélioré
 @MainActor
 class RideSearchViewModel: ObservableObject {
     // MARK: - Published Properties - Interface
     @Published var mapRegion = RideSearchConfig.ottawaRegion
     @Published var annotations: [LocationAnnotation] = []
+    @Published var showUserLocation = false
+    @Published var isLocationAvailable = false
     
     @Published var currentLanguage = "en" {
         didSet {
@@ -425,7 +564,7 @@ class RideSearchViewModel: ObservableObject {
     @Published var availableDrivers: [Driver] = []
     
     // MARK: - Services et données privées
-    @StateObject private var locationService = LocationService()
+    @StateObject var locationService = LocationService()
     private var pickupCoordinate: CLLocationCoordinate2D?
     private var destinationCoordinate: CLLocationCoordinate2D?
     
@@ -435,31 +574,63 @@ class RideSearchViewModel: ObservableObject {
         pickupCoordinate != nil && destinationCoordinate != nil
     }
     
-    // Exposition du LocationService pour CompactLocationField
-    var locationServiceProtocol: any LocationServiceProtocol {
-        locationService
-    }
-    
     // MARK: - Initialisation et gestion permissions
     init() {
-        // Ne pas accéder au locationService ici - sera fait via onAppear
+        // Configuration initiale
+        setupLocationObservers()
+    }
+    
+    private func setupLocationObservers() {
+        // Observer les changements de statut GPS
+        locationService.$isLocationAvailable
+            .assign(to: &$isLocationAvailable)
+        
+        locationService.$currentLocation
+            .map { $0 != nil }
+            .assign(to: &$showUserLocation)
     }
     
     func onViewAppear() {
         checkLocationPermissions()
     }
     
+    func recheckLocationPermissions() {
+        // Appelée quand l'utilisateur revient de l'app Settings
+        Task {
+            try? await Task.sleep(nanoseconds: 500_000_000) // Attendre 0.5 seconde
+            checkLocationPermissions()
+        }
+    }
+    
     private func checkLocationPermissions() {
         let status = locationService.authorizationStatus
-        showLocationPermission = !(status == .authorizedWhenInUse || status == .authorizedAlways)
         
-        if status == .authorizedWhenInUse || status == .authorizedAlways {
-            centerOnUserLocationWithService()
+        switch status {
+        case .notDetermined:
+            showLocationPermission = true
+        case .denied, .restricted:
+            isLocationAvailable = false
+            showUserLocation = false
+        case .authorizedWhenInUse, .authorizedAlways:
+            isLocationAvailable = true
+            locationService.startLocationUpdates()
+            if locationService.currentLocation != nil {
+                showUserLocation = true
+                centerOnUserLocationWithService()
+            }
+        @unknown default:
+            showLocationPermission = true
         }
+    }
+    
+    func requestLocationPermission() {
+        locationService.requestLocationPermission()
     }
     
     func onLocationPermissionGranted() {
         showLocationPermission = false
+        isLocationAvailable = true
+        showUserLocation = true
         centerOnUserLocationWithService()
     }
     
@@ -469,8 +640,6 @@ class RideSearchViewModel: ObservableObject {
                 center: userLocation,
                 span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
             )
-        } else {
-            locationService.startLocationUpdates()
         }
     }
     
@@ -498,7 +667,11 @@ class RideSearchViewModel: ObservableObject {
                 "addressNotFound": "Adresse introuvable",
                 "invalidAddress": "Adresse invalide",
                 "permissionDenied": "Permission de localisation refusée",
-                "locationDisabled": "Services de localisation désactivés"
+                "locationDisabled": "Services de localisation désactivés",
+                "gpsEnabled": "GPS",
+                "gpsDisabled": "Pas de GPS",
+                "enableGpsMessage": "Activez le GPS pour de meilleurs services de localisation",
+                "enableGps": "Activer"
             ]
         } else {
             return [
@@ -522,7 +695,11 @@ class RideSearchViewModel: ObservableObject {
                 "addressNotFound": "Address not found",
                 "invalidAddress": "Invalid address",
                 "permissionDenied": "Location permission denied",
-                "locationDisabled": "Location services disabled"
+                "locationDisabled": "Location services disabled",
+                "gpsEnabled": "GPS",
+                "gpsDisabled": "No GPS",
+                "enableGpsMessage": "Enable GPS for better location services",
+                "enableGps": "Enable"
             ]
         }
     }
@@ -531,44 +708,43 @@ class RideSearchViewModel: ObservableObject {
     func handleMapTap(at location: CGPoint) {
         // Pour l'instant, juste un log - développeras plus tard
         print("Map tapped at: \(location)")
-        
-        // Future fonctionnalité: convertir CGPoint en coordonnées géographiques
-        // et placer une annotation pickup/destination selon l'état actuel
     }
     
-    func centerOnUserLocation() {
-        Task { @MainActor in
-            do {
-                if let userLocation = locationService.currentLocation {
-                    // Utiliser la position actuelle
-                    mapRegion = MKCoordinateRegion(
-                        center: userLocation,
-                        span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
-                    )
-                } else {
-                    // Demander la position actuelle sur un thread background
-                    let userLocation = try await Task.detached {
-                        try await self.locationService.getCurrentLocationOnce()
-                    }.value
-                    
-                    mapRegion = MKCoordinateRegion(
-                        center: userLocation,
-                        span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
-                    )
-                }
-            } catch let error as LocationError {
-                // Gérer les erreurs de localisation
-                userFriendlyErrorMessage = error.localizedDescription(language: currentLanguage)
-                showError = true
+    func centerOnUserLocation() async {
+        guard isLocationAvailable else {
+            userFriendlyErrorMessage = translations["locationDisabled"] ?? "Location services disabled"
+            showError = true
+            return
+        }
+        
+        do {
+            if let userLocation = locationService.currentLocation {
+                // Utiliser la position actuelle
+                mapRegion = MKCoordinateRegion(
+                    center: userLocation,
+                    span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
+                )
+            } else {
+                // Demander la position actuelle
+                let userLocation = try await locationService.getCurrentLocationOnce()
                 
-                // Revenir à la région d'Ottawa par défaut
-                mapRegion = RideSearchConfig.ottawaRegion
-            } catch {
-                // Erreur inconnue
-                userFriendlyErrorMessage = translations["locationError"] ?? "Location error"
-                showError = true
-                mapRegion = RideSearchConfig.ottawaRegion
+                mapRegion = MKCoordinateRegion(
+                    center: userLocation,
+                    span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
+                )
             }
+        } catch let error as LocationError {
+            // Gérer les erreurs de localisation
+            userFriendlyErrorMessage = error.localizedDescription(language: currentLanguage)
+            showError = true
+            
+            // Revenir à la région d'Ottawa par défaut
+            mapRegion = RideSearchConfig.ottawaRegion
+        } catch {
+            // Erreur inconnue
+            userFriendlyErrorMessage = translations["locationError"] ?? "Location error"
+            showError = true
+            mapRegion = RideSearchConfig.ottawaRegion
         }
     }
     

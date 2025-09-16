@@ -2,7 +2,7 @@ import Foundation
 import CoreLocation
 import Combine
 
-// MARK: - Gestionnaire d'autocomplétion d'adresses
+// MARK: - Gestionnaire d'autocomplétion d'adresses corrigé
 @MainActor
 class AddressAutocompleteManager: ObservableObject {
     // MARK: - Configuration
@@ -41,6 +41,14 @@ class AddressAutocompleteManager: ObservableObject {
             return
         }
         
+        // Vérifier si les services de localisation sont disponibles
+        guard locationService.isLocationAvailable else {
+            searchError = language == "fr" ?
+                "Services de localisation indisponibles" :
+                "Location services unavailable"
+            return
+        }
+        
         isSearching = true
         
         // Nouvelle recherche avec debounce
@@ -73,13 +81,17 @@ class AddressAutocompleteManager: ObservableObject {
             
             let suggestion = AddressSuggestion(
                 id: UUID().uuidString,
-                displayText: formattedAddress,
-                fullAddress: formattedAddress,
+                displayText: formattedAddress.isEmpty ? query : formattedAddress,
+                fullAddress: formattedAddress.isEmpty ? query : formattedAddress,
                 coordinate: coordinate
             )
             
-            suggestions = [suggestion]
-            isSearching = false
+            // Mise à jour thread-safe sur le main thread
+            await MainActor.run { [weak self] in
+                guard let self = self else { return }
+                self.suggestions = [suggestion]
+                self.isSearching = false
+            }
             
         } catch let error as LocationError {
             await handleSearchError(error, language: language)
@@ -90,15 +102,21 @@ class AddressAutocompleteManager: ObservableObject {
     
     // MARK: - Gestion des erreurs
     private func handleSearchError(_ error: LocationError, language: String) async {
-        isSearching = false
-        suggestions = []
-        searchError = error.localizedDescription(language: language)
-        
-        // Effacer l'erreur après 3 secondes
-        Task {
-            try? await Task.sleep(for: .seconds(3))
-            if !Task.isCancelled {
-                searchError = nil
+        await MainActor.run { [weak self] in
+            guard let self = self else { return }
+            
+            self.isSearching = false
+            self.suggestions = []
+            self.searchError = error.localizedDescription(language: language)
+            
+            // Effacer l'erreur après 3 secondes
+            Task {
+                try? await Task.sleep(for: .seconds(3))
+                await MainActor.run { [weak self] in
+                    if !Task.isCancelled {
+                        self?.searchError = nil
+                    }
+                }
             }
         }
     }
@@ -141,5 +159,17 @@ struct AddressSuggestion: Identifiable, Hashable {
     
     static func == (lhs: AddressSuggestion, rhs: AddressSuggestion) -> Bool {
         lhs.id == rhs.id
+    }
+}
+
+// MARK: - Extension CLLocationCoordinate2D pour Hashable
+extension CLLocationCoordinate2D: Hashable {
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(latitude)
+        hasher.combine(longitude)
+    }
+    
+    public static func == (lhs: CLLocationCoordinate2D, rhs: CLLocationCoordinate2D) -> Bool {
+        return lhs.latitude == rhs.latitude && lhs.longitude == rhs.longitude
     }
 }

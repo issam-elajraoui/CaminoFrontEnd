@@ -69,7 +69,7 @@ protocol LocationServiceProtocol: ObservableObject {
     func reverseGeocode(_ coordinate: CLLocationCoordinate2D) async throws -> String
 }
 
-// MARK: - Service de géolocalisation principal
+// MARK: - Service de géolocalisation principal amélioré
 @MainActor
 class LocationService: NSObject, LocationServiceProtocol {
     // MARK: - Configuration
@@ -77,6 +77,7 @@ class LocationService: NSObject, LocationServiceProtocol {
     private static let searchRadiusDegrees: Double = 0.45 // ~50km
     private static let timeoutInterval: TimeInterval = 10
     private static let maxAddressLength = 200
+    private static let ottawaFallbackLocation = CLLocationCoordinate2D(latitude: 45.4215, longitude: -75.6972)
     
     // MARK: - Published Properties
     @Published var currentLocation: CLLocationCoordinate2D?
@@ -87,11 +88,13 @@ class LocationService: NSObject, LocationServiceProtocol {
     private let locationManager = CLLocationManager()
     private let geocoder = CLGeocoder()
     private var locationContinuation: CheckedContinuation<CLLocationCoordinate2D, Error>?
+    private var permissionContinuation: CheckedContinuation<CLAuthorizationStatus, Never>?
     
     // MARK: - Initialisation
     override init() {
         super.init()
         setupLocationManager()
+        checkInitialPermissions()
     }
     
     // MARK: - Configuration LocationManager
@@ -101,10 +104,20 @@ class LocationService: NSObject, LocationServiceProtocol {
         locationManager.distanceFilter = 10 // Mise à jour tous les 10m
         
         authorizationStatus = locationManager.authorizationStatus
-        
-        // Déplacer sur background thread
+        updateLocationAvailability()
+    }
+    
+    private func checkInitialPermissions() {
+        // Vérification initiale thread-safe
         Task.detached { [weak self] in
-            await self?.updateLocationAvailability()
+            let servicesEnabled = CLLocationManager.locationServicesEnabled()
+            await MainActor.run { [weak self] in
+                guard let self = self else { return }
+                if !servicesEnabled {
+                    self.isLocationAvailable = false
+                }
+                self.updateLocationAvailability()
+            }
         }
     }
     
@@ -114,30 +127,73 @@ class LocationService: NSObject, LocationServiceProtocol {
             switch authorizationStatus {
             case .notDetermined:
                 locationManager.requestWhenInUseAuthorization()
+                
+                // Attendre la réponse de l'utilisateur
+                let newStatus = await waitForPermissionResult()
+                handlePermissionResult(newStatus)
+                
             case .denied, .restricted:
                 // Diriger vers les paramètres iOS
-                if let settingsUrl = URL(string: UIApplication.openSettingsURLString) {
-                    await UIApplication.shared.open(settingsUrl)
-                }
+                await openLocationSettings()
+                
             case .authorizedWhenInUse, .authorizedAlways:
                 startLocationUpdates()
+                
             @unknown default:
-                break
+                locationManager.requestWhenInUseAuthorization()
             }
         }
     }
-    // Ajoutez cette méthode dans LocationService
-    func checkAuthorizationStatusAsync() async -> CLAuthorizationStatus {
+    
+    private func waitForPermissionResult() async -> CLAuthorizationStatus {
         return await withCheckedContinuation { continuation in
-            Task { @MainActor in
-                continuation.resume(returning: authorizationStatus)
+            permissionContinuation = continuation
+            
+            // Timeout pour éviter les blocages infinis
+            Task {
+                try? await Task.sleep(for: .seconds(10))
+                if permissionContinuation != nil {
+                    permissionContinuation = nil
+                    continuation.resume(returning: authorizationStatus)
+                }
             }
+        }
+    }
+    
+    private func handlePermissionResult(_ status: CLAuthorizationStatus) {
+        switch status {
+        case .authorizedWhenInUse, .authorizedAlways:
+            isLocationAvailable = true
+            startLocationUpdates()
+        case .denied, .restricted:
+            isLocationAvailable = false
+            currentLocation = nil
+        case .notDetermined:
+            isLocationAvailable = false
+        @unknown default:
+            isLocationAvailable = false
+        }
+    }
+    
+    private func openLocationSettings() async {
+        if let settingsUrl = URL(string: UIApplication.openSettingsURLString) {
+            await UIApplication.shared.open(settingsUrl)
         }
     }
     
     // MARK: - Démarrage/Arrêt de la localisation
     func startLocationUpdates() {
-        guard isLocationAvailable else { return }
+        guard CLLocationManager.locationServicesEnabled() else {
+            isLocationAvailable = false
+            return
+        }
+        
+        guard authorizationStatus == .authorizedWhenInUse || authorizationStatus == .authorizedAlways else {
+            isLocationAvailable = false
+            return
+        }
+        
+        isLocationAvailable = true
         locationManager.startUpdatingLocation()
     }
     
@@ -153,14 +209,12 @@ class LocationService: NSObject, LocationServiceProtocol {
             throw LocationError.invalidAddress
         }
         
-        // Vérification de la position actuelle
-        guard let currentLocation = currentLocation else {
-            throw LocationError.locationDisabled
-        }
+        // Utiliser une position de recherche par défaut si pas de localisation actuelle
+        let searchCenter = currentLocation ?? Self.ottawaFallbackLocation
         
-        // Région de recherche (50km autour de la position actuelle)
+        // Région de recherche (50km autour de la position de recherche)
         let searchRegion = CLCircularRegion(
-            center: currentLocation,
+            center: searchCenter,
             radius: Self.searchRadiusKm * 1000, // Conversion en mètres
             identifier: "searchArea"
         )
@@ -179,7 +233,8 @@ class LocationService: NSObject, LocationServiceProtocol {
             geocoder.geocodeAddressString(sanitizedAddress, in: searchRegion) { placemarks, error in
                 timeoutTask.cancel()
                 
-                if error != nil {
+                if let error = error {
+                    print("Geocoding error: \(error.localizedDescription)")
                     continuation.resume(throwing: LocationError.geocodingFailed)
                     return
                 }
@@ -192,11 +247,13 @@ class LocationService: NSObject, LocationServiceProtocol {
                 
                 let coordinate = location.coordinate
                 
-                // Validation que le résultat est dans la zone de service
-                if self.isCoordinateInServiceArea(coordinate) {
+                // Validation que le résultat est dans une zone raisonnable
+                if self.isCoordinateInServiceArea(coordinate, relativeTo: searchCenter) {
                     continuation.resume(returning: coordinate)
                 } else {
-                    continuation.resume(throwing: LocationError.outsideServiceArea)
+                    // Accepter quand même le résultat mais avec un warning
+                    print("Warning: Address outside preferred service area but accepting result")
+                    continuation.resume(returning: coordinate)
                 }
             }
         }
@@ -223,7 +280,8 @@ class LocationService: NSObject, LocationServiceProtocol {
             geocoder.reverseGeocodeLocation(location) { placemarks, error in
                 timeoutTask.cancel()
                 
-                if error != nil {
+                if let error = error {
+                    print("Reverse geocoding error: \(error.localizedDescription)")
                     continuation.resume(throwing: LocationError.geocodingFailed)
                     return
                 }
@@ -235,6 +293,39 @@ class LocationService: NSObject, LocationServiceProtocol {
                 
                 let address = self.formatAddress(from: placemark)
                 continuation.resume(returning: address)
+            }
+        }
+    }
+    
+    // MARK: - Extension pour obtenir position actuelle
+    func getCurrentLocationOnce() async throws -> CLLocationCoordinate2D {
+        guard CLLocationManager.locationServicesEnabled() else {
+            throw LocationError.locationDisabled
+        }
+        
+        guard authorizationStatus == .authorizedWhenInUse || authorizationStatus == .authorizedAlways else {
+            throw LocationError.permissionDenied
+        }
+        
+        if let currentLocation = currentLocation {
+            return currentLocation
+        }
+        
+        return try await withCheckedThrowingContinuation { continuation in
+            locationContinuation = continuation
+            locationManager.requestLocation()
+            
+            // Timeout
+            Task {
+                do {
+                    try await Task.sleep(for: .seconds(Self.timeoutInterval))
+                    if locationContinuation != nil {
+                        locationContinuation = nil
+                        continuation.resume(throwing: LocationError.timeout)
+                    }
+                } catch {
+                    // Task annulé, ne rien faire
+                }
             }
         }
     }
@@ -264,10 +355,8 @@ class LocationService: NSObject, LocationServiceProtocol {
                coordinate.longitude >= -180 && coordinate.longitude <= 180
     }
     
-    private func isCoordinateInServiceArea(_ coordinate: CLLocationCoordinate2D) -> Bool {
-        guard let currentLocation = currentLocation else { return false }
-        
-        let currentCLLocation = CLLocation(latitude: currentLocation.latitude, longitude: currentLocation.longitude)
+    private func isCoordinateInServiceArea(_ coordinate: CLLocationCoordinate2D, relativeTo center: CLLocationCoordinate2D) -> Bool {
+        let currentCLLocation = CLLocation(latitude: center.latitude, longitude: center.longitude)
         let targetCLLocation = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
         
         let distance = currentCLLocation.distance(from: targetCLLocation)
@@ -293,21 +382,16 @@ class LocationService: NSObject, LocationServiceProtocol {
             components.append(province)
         }
         
-        return components.joined(separator: " ")
+        let result = components.joined(separator: " ")
+        return result.isEmpty ? "Address" : result
     }
     
     private func updateLocationAvailability() {
-        // Éviter l'appel bloquant sur le thread principal
-        Task.detached { [weak self] in
-            let servicesEnabled = CLLocationManager.locationServicesEnabled()
-            
-            await MainActor.run { [weak self] in
-                guard let self = self else { return }
-                self.isLocationAvailable = servicesEnabled &&
-                                        (self.authorizationStatus == .authorizedWhenInUse ||
-                                         self.authorizationStatus == .authorizedAlways)
-            }
-        }
+        let servicesEnabled = CLLocationManager.locationServicesEnabled()
+        let hasPermission = (authorizationStatus == .authorizedWhenInUse ||
+                           authorizationStatus == .authorizedAlways)
+        
+        isLocationAvailable = servicesEnabled && hasPermission
     }
 }
 
@@ -330,6 +414,8 @@ extension LocationService: CLLocationManagerDelegate {
     }
     
     nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        print("Location manager error: \(error.localizedDescription)")
+        
         Task { @MainActor in
             locationContinuation?.resume(throwing: LocationError.unknown)
             locationContinuation = nil
@@ -339,6 +425,11 @@ extension LocationService: CLLocationManagerDelegate {
     nonisolated func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
         Task { @MainActor in
             authorizationStatus = status
+            
+            // Résoudre la continuation de permission si en attente
+            permissionContinuation?.resume(returning: status)
+            permissionContinuation = nil
+            
             updateLocationAvailability()
             
             switch status {
@@ -347,41 +438,11 @@ extension LocationService: CLLocationManagerDelegate {
             case .denied, .restricted:
                 stopLocationUpdates()
                 currentLocation = nil
+                isLocationAvailable = false
             case .notDetermined:
-                break
+                isLocationAvailable = false
             @unknown default:
-                break
-            }
-        }
-    }
-}
-
-// MARK: - Extension pour obtenir position actuelle
-extension LocationService {
-    func getCurrentLocationOnce() async throws -> CLLocationCoordinate2D {
-        guard isLocationAvailable else {
-            throw LocationError.locationDisabled
-        }
-        
-        if let currentLocation = currentLocation {
-            return currentLocation
-        }
-        
-        return try await withCheckedThrowingContinuation { continuation in
-            locationContinuation = continuation
-            locationManager.requestLocation()
-            
-            // Timeout
-            Task {
-                do {
-                    try await Task.sleep(for: .seconds(Self.timeoutInterval))
-                    if locationContinuation != nil {
-                        locationContinuation = nil
-                        continuation.resume(throwing: LocationError.timeout)
-                    }
-                } catch {
-                    // Task annulé, ne rien faire
-                }
+                isLocationAvailable = false
             }
         }
     }
