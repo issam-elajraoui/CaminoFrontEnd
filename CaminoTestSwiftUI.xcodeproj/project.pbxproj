@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		C28EE2E72E753FC0008402EC /* PhoneNumberKit in Frameworks */ = {isa = PBXBuildFile; productRef = C28EE2E62E753FC0008402EC /* PhoneNumberKit */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		C20288BD2E6E9C2F006D1927 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -35,16 +39,6 @@
 			path = CaminoTestSwiftUI;
 			sourceTree = "<group>";
 		};
-		C20288BF2E6E9C2F006D1927 /* CaminoTestSwiftUITests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = CaminoTestSwiftUITests;
-			sourceTree = "<group>";
-		};
-		C20288C92E6E9C2F006D1927 /* CaminoTestSwiftUIUITests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = CaminoTestSwiftUIUITests;
-			sourceTree = "<group>";
-		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -52,6 +46,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C28EE2E72E753FC0008402EC /* PhoneNumberKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -76,8 +71,6 @@
 			isa = PBXGroup;
 			children = (
 				C20288B12E6E9C2E006D1927 /* CaminoTestSwiftUI */,
-				C20288BF2E6E9C2F006D1927 /* CaminoTestSwiftUITests */,
-				C20288C92E6E9C2F006D1927 /* CaminoTestSwiftUIUITests */,
 				C20288B02E6E9C2E006D1927 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -112,6 +105,7 @@
 			);
 			name = CaminoTestSwiftUI;
 			packageProductDependencies = (
+				C28EE2E62E753FC0008402EC /* PhoneNumberKit */,
 			);
 			productName = CaminoTestSwiftUI;
 			productReference = C20288AF2E6E9C2E006D1927 /* CaminoTestSwiftUI.app */;
@@ -129,9 +123,6 @@
 			);
 			dependencies = (
 				C20288BE2E6E9C2F006D1927 /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				C20288BF2E6E9C2F006D1927 /* CaminoTestSwiftUITests */,
 			);
 			name = CaminoTestSwiftUITests;
 			packageProductDependencies = (
@@ -152,9 +143,6 @@
 			);
 			dependencies = (
 				C20288C82E6E9C2F006D1927 /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				C20288C92E6E9C2F006D1927 /* CaminoTestSwiftUIUITests */,
 			);
 			name = CaminoTestSwiftUIUITests;
 			packageProductDependencies = (
@@ -195,6 +183,9 @@
 			);
 			mainGroup = C20288A62E6E9C2E006D1927;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				C28EE2E52E753F97008402EC /* XCRemoteSwiftPackageReference "PhoneNumberKit" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = C20288B02E6E9C2E006D1927 /* Products */;
 			projectDirPath = "";
@@ -393,8 +384,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = LY4958MU54;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -402,13 +395,15 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = camino.CaminoTestSwiftUI;
+				PRODUCT_BUNDLE_IDENTIFIER = camino.CaminoTestSwiftUIg;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -420,8 +415,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = LY4958MU54;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -429,13 +426,15 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = camino.CaminoTestSwiftUI;
+				PRODUCT_BUNDLE_IDENTIFIER = camino.CaminoTestSwiftUIg;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -466,6 +465,7 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = LY4958MU54;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
 				MARKETING_VERSION = 1.0;
@@ -499,6 +499,7 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = LY4958MU54;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = camino.CaminoTestSwiftUIUITests;
@@ -550,6 +551,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		C28EE2E52E753F97008402EC /* XCRemoteSwiftPackageReference "PhoneNumberKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/marmelroy/PhoneNumberKit";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 4.1.4;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		C28EE2E62E753FC0008402EC /* PhoneNumberKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C28EE2E52E753F97008402EC /* XCRemoteSwiftPackageReference "PhoneNumberKit" */;
+			productName = PhoneNumberKit;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = C20288A72E6E9C2E006D1927 /* Project object */;
 }

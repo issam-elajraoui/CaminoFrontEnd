@@ -2,7 +2,7 @@
 //  CaminoTestSwiftUIApp.swift
 //  CaminoTestSwiftUI
 //
-//  Created by Issam EL MOUJAHID on 2025-09-08.
+//  Created by Issam EL MOUJAHID on 2025-09-14.
 //
 
 import SwiftUI
@@ -11,7 +11,7 @@ import SwiftUI
 struct CaminoTestSwiftUIApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RideSearchView()
         }
     }
 }
