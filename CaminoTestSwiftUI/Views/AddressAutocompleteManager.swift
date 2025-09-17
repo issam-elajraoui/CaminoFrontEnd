@@ -163,7 +163,8 @@ struct AddressSuggestion: Identifiable, Hashable {
 }
 
 // MARK: - Extension CLLocationCoordinate2D pour Hashable
-extension CLLocationCoordinate2D: Hashable {
+extension CLLocationCoordinate2D: @retroactive Equatable {}
+extension CLLocationCoordinate2D: @retroactive Hashable {
     public func hash(into hasher: inout Hasher) {
         hasher.combine(latitude)
         hasher.combine(longitude)
