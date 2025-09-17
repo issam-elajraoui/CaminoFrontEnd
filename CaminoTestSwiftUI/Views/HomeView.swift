@@ -1,6 +1,7 @@
 import SwiftUI
 import Foundation
 import MapKit
+import Combine
 
 // MARK: - Configuration de recherche
 struct RideSearchConfig {
@@ -119,41 +120,63 @@ struct RideSearchView: View {
             viewModel.recheckLocationPermissions()
         }
     }
-    
+    // MARK: - Bouton GPD
+    private var gpsLocationButton: some View {
+        Button(action: {
+            Task {
+                await viewModel.centerOnUserLocation()
+            }
+        }) {
+            ZStack {
+                // Fond blanc style Apple Maps
+                Circle()
+                    .fill(Color.white)
+                    .frame(width: 44, height: 44)
+                    .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
+                
+                // Icône GPS avec couleur canadienne
+                Image(systemName: viewModel.isLocationAvailable ? "location.fill" : "location.slash")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundColor(viewModel.isLocationAvailable ? .red : .gray)
+            }
+        }
+        .disabled(!viewModel.isLocationAvailable)
+        .scaleEffect(viewModel.isLocationAvailable ? 1.0 : 0.9)
+        .animation(.easeInOut(duration: 0.2), value: viewModel.isLocationAvailable)
+    }
     // MARK: - Section Carte
     private var mapSection: some View {
-        Map {
+        Map(position: $viewModel.mapPosition) {
             // Annotations des lieux
             ForEach(viewModel.annotations) { annotation in
-                Marker(coordinate: annotation.coordinate) {
-                    Text("")
+                Annotation("", coordinate: annotation.coordinate) {
+                    Circle()
+                        .fill(annotation.type.color)
+                        .frame(width: 16, height: 16)
+                        .overlay(
+                            Circle()
+                                .stroke(Color.white, lineWidth: 2)
+                        )
                 }
-                .tint(annotation.type.color)
             }
             
-            // Position utilisateur si disponible
+            // Position utilisateur si disponible et autorisée
             if viewModel.showUserLocation {
                 UserAnnotation()
             }
         }
         .mapStyle(.standard)
+        .mapControls {
+            MapUserLocationButton()
+                .hidden() // On cache le bouton par défaut pour utiliser le nôtre
+        }
         .onTapGesture(coordinateSpace: .local) { location in
             viewModel.handleMapTap(at: location)
         }
         .overlay(
             VStack {
                 HStack {
-                    Button("My Location") {
-                        Task {
-                            await viewModel.centerOnUserLocation()
-                        }
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Color.white.opacity(0.9))
-                    .cornerRadius(8)
-                    .shadow(radius: 2)
-                    .disabled(!viewModel.isLocationAvailable)
+                    gpsLocationButton
                     Spacer()
                 }
                 Spacer()
@@ -161,7 +184,6 @@ struct RideSearchView: View {
             .padding()
         )
     }
-    
     // MARK: - Toggle de langue
     private var languageToggleButtons: some View {
         HStack(spacing: 0) {
@@ -402,12 +424,34 @@ struct CompactLocationField: View {
     let placeholder: String
     let errorMessage: String
     let isPickup: Bool
-    let locationService: LocationService
+    let locationService: LocationService // Instance partagée - PAS StateObject
     let language: String
     let onLocationSelected: (CLLocationCoordinate2D) -> Void
     
-    @StateObject private var autocompleteManager = AddressAutocompleteManager(locationService: LocationService())
+    // NOUVEAU: Observable object qui utilise l'instance partagée
+    @StateObject private var autocompleteManager: SharedAutocompleteManager
     @State private var showSuggestions = false
+    
+    // Initializer personnalisé pour partager l'instance
+    init(text: Binding<String>,
+         placeholder: String,
+         errorMessage: String,
+         isPickup: Bool,
+         locationService: LocationService,
+         language: String,
+         onLocationSelected: @escaping (CLLocationCoordinate2D) -> Void) {
+        
+        self._text = text
+        self.placeholder = placeholder
+        self.errorMessage = errorMessage
+        self.isPickup = isPickup
+        self.locationService = locationService
+        self.language = language
+        self.onLocationSelected = onLocationSelected
+        
+        // Créer le manager avec l'instance partagée
+        self._autocompleteManager = StateObject(wrappedValue: SharedAutocompleteManager(locationService: locationService))
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -425,7 +469,7 @@ struct CompactLocationField: View {
                             text = sanitized
                         }
                         
-                        // Déclencher l'autocomplétion
+                        // Déclencher l'autocomplétion avec debounce
                         if sanitized.count >= 3 {
                             autocompleteManager.searchAddresses(for: sanitized, language: language)
                             showSuggestions = true
@@ -527,11 +571,153 @@ struct CompactLocationField: View {
     }
 }
 
+
+@MainActor
+class SharedAutocompleteManager: ObservableObject {
+    // MARK: - Configuration
+    private static let debounceDelay: TimeInterval = 0.5
+    private static let minCharacters = 3
+    
+    // MARK: - Published Properties
+    @Published var suggestions: [AddressSuggestion] = []
+    @Published var isSearching = false
+    @Published var searchError: String? = nil
+    
+    // MARK: - Private Properties
+    private let locationService: LocationService // Instance partagée, PAS StateObject
+    private var searchTask: Task<Void, Never>?
+    
+    // MARK: - Initialisation avec instance partagée
+    init(locationService: LocationService) {
+        self.locationService = locationService
+    }
+    
+    // MARK: - Recherche avec debounce
+    func searchAddresses(for query: String, language: String) {
+        // Annuler la recherche précédente
+        searchTask?.cancel()
+        
+        // Nettoyer les résultats précédents
+        suggestions = []
+        searchError = nil
+        
+        // Validation de base
+        let sanitizedQuery = sanitizeQuery(query)
+        guard sanitizedQuery.count >= Self.minCharacters else {
+            isSearching = false
+            return
+        }
+        
+        // Vérifier disponibilité GPS sans créer de nouvelle instance
+        guard locationService.isLocationAvailable else {
+            searchError = language == "fr" ?
+                "Services de localisation indisponibles" :
+                "Location services unavailable"
+            return
+        }
+        
+        isSearching = true
+        
+        // Nouvelle recherche avec debounce
+        searchTask = Task { [weak self] in
+            do {
+                // Attendre le délai de debounce
+                try await Task.sleep(for: .milliseconds(Int(Self.debounceDelay * 1000)))
+                
+                // Vérifier si la tâche n'a pas été annulée
+                guard !Task.isCancelled else { return }
+                
+                await self?.performAddressSearch(query: sanitizedQuery, language: language)
+            } catch {
+                // Task annulé ou erreur de sleep, ne rien faire
+            }
+        }
+    }
+    
+    // MARK: - Recherche d'adresses
+    private func performAddressSearch(query: String, language: String) async {
+        do {
+            // Utiliser l'instance partagée pour la recherche
+            let coordinate = try await locationService.geocodeAddress(query)
+            
+            // Vérifier si la tâche n'a pas été annulée
+            guard !Task.isCancelled else { return }
+            
+            // Créer la suggestion à partir du résultat
+            let formattedAddress = try await locationService.reverseGeocode(coordinate)
+            
+            let suggestion = AddressSuggestion(
+                id: UUID().uuidString,
+                displayText: formattedAddress.isEmpty ? query : formattedAddress,
+                fullAddress: formattedAddress.isEmpty ? query : formattedAddress,
+                coordinate: coordinate
+            )
+            
+            // Mise à jour thread-safe
+            await MainActor.run { [weak self] in
+                guard let self = self else { return }
+                self.suggestions = [suggestion]
+                self.isSearching = false
+            }
+            
+        } catch let error as LocationError {
+            await handleSearchError(error, language: language)
+        } catch {
+            await handleSearchError(LocationError.unknown, language: language)
+        }
+    }
+    
+    // MARK: - Gestion des erreurs
+    private func handleSearchError(_ error: LocationError, language: String) async {
+        await MainActor.run { [weak self] in
+            guard let self = self else { return }
+            
+            self.isSearching = false
+            self.suggestions = []
+            self.searchError = error.localizedDescription(language: language)
+            
+            // Effacer l'erreur après 3 secondes
+            Task {
+                try? await Task.sleep(for: .seconds(3))
+                await MainActor.run { [weak self] in
+                    if !Task.isCancelled {
+                        self?.searchError = nil
+                    }
+                }
+            }
+        }
+    }
+    
+    // MARK: - Utilitaires
+    private func sanitizeQuery(_ query: String) -> String {
+        let maxLength = 200
+        let allowedCharacters = CharacterSet.alphanumerics
+            .union(.whitespaces)
+            .union(CharacterSet(charactersIn: ",-./()#'\""))
+        
+        let filtered = query.unicodeScalars
+            .filter { allowedCharacters.contains($0) }
+            .map(String.init)
+            .joined()
+        
+        return String(filtered.prefix(maxLength))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    
+    func clearSuggestions() {
+        searchTask?.cancel()
+        suggestions = []
+        searchError = nil
+        isSearching = false
+    }
+}
+
+
 // MARK: - ViewModel de recherche de course amélioré
 @MainActor
 class RideSearchViewModel: ObservableObject {
     // MARK: - Published Properties - Interface
-    @Published var mapRegion = RideSearchConfig.ottawaRegion
+    @Published var mapPosition = MapCameraPosition.region(RideSearchConfig.ottawaRegion)
     @Published var annotations: [LocationAnnotation] = []
     @Published var showUserLocation = false
     @Published var isLocationAvailable = false
@@ -567,7 +753,7 @@ class RideSearchViewModel: ObservableObject {
     @StateObject var locationService = LocationService()
     private var pickupCoordinate: CLLocationCoordinate2D?
     private var destinationCoordinate: CLLocationCoordinate2D?
-    
+    private var cancellables = Set<AnyCancellable>()
     // MARK: - Computed Properties
     var canSearch: Bool {
         !pickupAddress.isEmpty && !destinationAddress.isEmpty &&
@@ -581,13 +767,20 @@ class RideSearchViewModel: ObservableObject {
     }
     
     private func setupLocationObservers() {
-        // Observer les changements de statut GPS
+        // Observer les changements de statut GPS avec Combine pour éviter les accès directs
         locationService.$isLocationAvailable
-            .assign(to: &$isLocationAvailable)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] isAvailable in
+                self?.isLocationAvailable = isAvailable
+            }
+            .store(in: &cancellables)
         
         locationService.$currentLocation
-            .map { $0 != nil }
-            .assign(to: &$showUserLocation)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] location in
+                self?.showUserLocation = (location != nil)
+            }
+            .store(in: &cancellables)
     }
     
     func onViewAppear() {
@@ -636,10 +829,10 @@ class RideSearchViewModel: ObservableObject {
     
     private func centerOnUserLocationWithService() {
         if let userLocation = locationService.currentLocation {
-            mapRegion = MKCoordinateRegion(
+            mapPosition = .region(MKCoordinateRegion(
                 center: userLocation,
                 span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
-            )
+            ))
         }
     }
     
@@ -718,35 +911,45 @@ class RideSearchViewModel: ObservableObject {
         }
         
         do {
-            if let userLocation = locationService.currentLocation {
-                // Utiliser la position actuelle
-                mapRegion = MKCoordinateRegion(
-                    center: userLocation,
-                    span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
-                )
-            } else {
-                // Demander la position actuelle
-                let userLocation = try await locationService.getCurrentLocationOnce()
-                
-                mapRegion = MKCoordinateRegion(
-                    center: userLocation,
-                    span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
-                )
-            }
-        } catch let error as LocationError {
-            // Gérer les erreurs de localisation
-            userFriendlyErrorMessage = error.localizedDescription(language: currentLanguage)
-            showError = true
+            let userLocation: CLLocationCoordinate2D
             
-            // Revenir à la région d'Ottawa par défaut
-            mapRegion = RideSearchConfig.ottawaRegion
+            if let currentLoc = locationService.currentLocation {
+                userLocation = currentLoc
+            } else {
+                userLocation = try await locationService.getCurrentLocationOnce()
+            }
+            
+            print("📍 Position trouvée: \(userLocation.latitude), \(userLocation.longitude)")
+            
+            // Création de la nouvelle région
+            let newRegion = MKCoordinateRegion(
+                center: userLocation,
+                span: MKCoordinateSpan(latitudeDelta: 0.02, longitudeDelta: 0.02)
+            )
+            
+            // Mise à jour avec la nouvelle API MapCameraPosition
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 1.0)) {
+                    mapPosition = .region(newRegion)
+                }
+                print("🗺️ Position camera mise à jour vers: \(userLocation)")
+            }
+            
+        } catch let error as LocationError {
+            await MainActor.run {
+                userFriendlyErrorMessage = error.localizedDescription(language: currentLanguage)
+                showError = true
+            }
+            print("❌ Erreur GPS: \(error.localizedDescription)")
         } catch {
-            // Erreur inconnue
-            userFriendlyErrorMessage = translations["locationError"] ?? "Location error"
-            showError = true
-            mapRegion = RideSearchConfig.ottawaRegion
+            await MainActor.run {
+                userFriendlyErrorMessage = translations["locationError"] ?? "Location error"
+                showError = true
+            }
+            print("❌ Erreur inconnue: \(error)")
         }
     }
+    
     
     // MARK: - Méthodes de gestion des locations
     func setPickupLocation(_ coordinate: CLLocationCoordinate2D) {
@@ -788,7 +991,7 @@ class RideSearchViewModel: ObservableObject {
             annotations.append(LocationAnnotation(coordinate: destination, type: .destination))
         }
         
-        // Ajuster la région de la carte pour montrer les deux points
+        // Ajuster la position de la caméra pour montrer les deux points
         if let pickup = pickupCoordinate, let destination = destinationCoordinate {
             let minLat = min(pickup.latitude, destination.latitude)
             let maxLat = max(pickup.latitude, destination.latitude)
@@ -805,7 +1008,8 @@ class RideSearchViewModel: ObservableObject {
                 longitudeDelta: max(0.05, (maxLon - minLon) * 1.3)
             )
             
-            mapRegion = MKCoordinateRegion(center: center, span: span)
+            let region = MKCoordinateRegion(center: center, span: span)
+            mapPosition = .region(region)
         }
     }
     
@@ -974,9 +1178,9 @@ struct DriverRowView: View {
     }
 }
 
-// MARK: - Preview Provider
-struct RideSearchView_Previews: PreviewProvider {
-    static var previews: some View {
-        RideSearchView()
-    }
-}
+//// MARK: - Preview Provider
+//struct RideSearchView_Previews: PreviewProvider {
+//    static var previews: some View {
+//        RideSearchView()
+//    }
+//}

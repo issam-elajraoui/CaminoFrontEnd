@@ -69,12 +69,11 @@ protocol LocationServiceProtocol: ObservableObject {
     func reverseGeocode(_ coordinate: CLLocationCoordinate2D) async throws -> String
 }
 
-// MARK: - Service de géolocalisation principal amélioré
+// MARK: - Service de géolocalisation principal
 @MainActor
 class LocationService: NSObject, LocationServiceProtocol {
     // MARK: - Configuration
     private static let searchRadiusKm: Double = 50
-    private static let searchRadiusDegrees: Double = 0.45 // ~50km
     private static let timeoutInterval: TimeInterval = 10
     private static let maxAddressLength = 200
     private static let ottawaFallbackLocation = CLLocationCoordinate2D(latitude: 45.4215, longitude: -75.6972)
@@ -101,14 +100,13 @@ class LocationService: NSObject, LocationServiceProtocol {
     private func setupLocationManager() {
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
-        locationManager.distanceFilter = 10 // Mise à jour tous les 10m
+        locationManager.distanceFilter = 50
         
         authorizationStatus = locationManager.authorizationStatus
         updateLocationAvailability()
     }
     
     private func checkInitialPermissions() {
-        // Vérification initiale thread-safe
         Task.detached { [weak self] in
             let servicesEnabled = CLLocationManager.locationServicesEnabled()
             await MainActor.run { [weak self] in
@@ -127,13 +125,10 @@ class LocationService: NSObject, LocationServiceProtocol {
             switch authorizationStatus {
             case .notDetermined:
                 locationManager.requestWhenInUseAuthorization()
-                
-                // Attendre la réponse de l'utilisateur
                 let newStatus = await waitForPermissionResult()
                 handlePermissionResult(newStatus)
                 
             case .denied, .restricted:
-                // Diriger vers les paramètres iOS
                 await openLocationSettings()
                 
             case .authorizedWhenInUse, .authorizedAlways:
@@ -149,12 +144,15 @@ class LocationService: NSObject, LocationServiceProtocol {
         return await withCheckedContinuation { continuation in
             permissionContinuation = continuation
             
-            // Timeout pour éviter les blocages infinis
             Task {
-                try? await Task.sleep(for: .seconds(10))
-                if permissionContinuation != nil {
-                    permissionContinuation = nil
-                    continuation.resume(returning: authorizationStatus)
+                do {
+                    try await Task.sleep(for: .seconds(10))
+                    if permissionContinuation != nil {
+                        permissionContinuation = nil
+                        continuation.resume(returning: authorizationStatus)
+                    }
+                } catch {
+                    // Task cancelled
                 }
             }
         }
@@ -203,30 +201,25 @@ class LocationService: NSObject, LocationServiceProtocol {
     
     // MARK: - Géocodage sécurisé
     func geocodeAddress(_ address: String) async throws -> CLLocationCoordinate2D {
-        // Validation et sanitisation de l'entrée
         let sanitizedAddress = sanitizeAddress(address)
         guard !sanitizedAddress.isEmpty else {
             throw LocationError.invalidAddress
         }
         
-        // Utiliser une position de recherche par défaut si pas de localisation actuelle
         let searchCenter = currentLocation ?? Self.ottawaFallbackLocation
-        
-        // Région de recherche (50km autour de la position de recherche)
         let searchRegion = CLCircularRegion(
             center: searchCenter,
-            radius: Self.searchRadiusKm * 1000, // Conversion en mètres
+            radius: Self.searchRadiusKm * 1000,
             identifier: "searchArea"
         )
         
         return try await withCheckedThrowingContinuation { continuation in
-            // Timeout pour éviter les blocages
             let timeoutTask = Task {
                 do {
                     try await Task.sleep(for: .seconds(Self.timeoutInterval))
                     continuation.resume(throwing: LocationError.timeout)
                 } catch {
-                    // Task annulé, ne rien faire
+                    // Task cancelled
                 }
             }
             
@@ -246,12 +239,9 @@ class LocationService: NSObject, LocationServiceProtocol {
                 }
                 
                 let coordinate = location.coordinate
-                
-                // Validation que le résultat est dans une zone raisonnable
                 if self.isCoordinateInServiceArea(coordinate, relativeTo: searchCenter) {
                     continuation.resume(returning: coordinate)
                 } else {
-                    // Accepter quand même le résultat mais avec un warning
                     print("Warning: Address outside preferred service area but accepting result")
                     continuation.resume(returning: coordinate)
                 }
@@ -273,7 +263,7 @@ class LocationService: NSObject, LocationServiceProtocol {
                     try await Task.sleep(for: .seconds(Self.timeoutInterval))
                     continuation.resume(throwing: LocationError.timeout)
                 } catch {
-                    // Task annulé, ne rien faire
+                    // Task cancelled
                 }
             }
             
@@ -297,7 +287,7 @@ class LocationService: NSObject, LocationServiceProtocol {
         }
     }
     
-    // MARK: - Extension pour obtenir position actuelle
+    // MARK: - Obtenir position actuelle UNE SEULE FOIS (Swift 16 compatible)
     func getCurrentLocationOnce() async throws -> CLLocationCoordinate2D {
         guard CLLocationManager.locationServicesEnabled() else {
             throw LocationError.locationDisabled
@@ -315,7 +305,6 @@ class LocationService: NSObject, LocationServiceProtocol {
             locationContinuation = continuation
             locationManager.requestLocation()
             
-            // Timeout
             Task {
                 do {
                     try await Task.sleep(for: .seconds(Self.timeoutInterval))
@@ -324,19 +313,15 @@ class LocationService: NSObject, LocationServiceProtocol {
                         continuation.resume(throwing: LocationError.timeout)
                     }
                 } catch {
-                    // Task annulé, ne rien faire
+                    // Task cancelled
                 }
             }
         }
     }
     
     // MARK: - Méthodes utilitaires privées
-    
     private func sanitizeAddress(_ address: String) -> String {
-        // Limitation de longueur
         let trimmed = String(address.prefix(Self.maxAddressLength))
-        
-        // Caractères autorisés : alphanumériques, espaces, ponctuation d'adresse
         let allowedCharacters = CharacterSet.alphanumerics
             .union(.whitespaces)
             .union(CharacterSet(charactersIn: ",-./()#'\""))
@@ -360,7 +345,7 @@ class LocationService: NSObject, LocationServiceProtocol {
         let targetCLLocation = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
         
         let distance = currentCLLocation.distance(from: targetCLLocation)
-        return distance <= (Self.searchRadiusKm * 1000) // 50km en mètres
+        return distance <= (Self.searchRadiusKm * 1000)
     }
     
     private func formatAddress(from placemark: CLPlacemark) -> String {
@@ -400,14 +385,12 @@ extension LocationService: CLLocationManagerDelegate {
     nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
         
-        // Validation des coordonnées
         let coordinate = location.coordinate
         guard isValidCoordinate(coordinate) else { return }
         
         Task { @MainActor in
             currentLocation = coordinate
             
-            // Résoudre la continuation si en attente
             locationContinuation?.resume(returning: coordinate)
             locationContinuation = nil
         }
@@ -426,7 +409,6 @@ extension LocationService: CLLocationManagerDelegate {
         Task { @MainActor in
             authorizationStatus = status
             
-            // Résoudre la continuation de permission si en attente
             permissionContinuation?.resume(returning: status)
             permissionContinuation = nil
             
