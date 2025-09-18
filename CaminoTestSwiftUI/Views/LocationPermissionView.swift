@@ -338,9 +338,7 @@ struct LocationPermissionView: View {
         // Si déjà autorisé, continuer automatiquement
         if locationService.authorizationStatus == .authorizedWhenInUse ||
            locationService.authorizationStatus == .authorizedAlways {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 onPermissionGranted()
-            }
         }
     }
     
@@ -348,7 +346,7 @@ struct LocationPermissionView: View {
         switch status {
         case .authorizedWhenInUse, .authorizedAlways:
             // Permission accordée, continuer
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 onPermissionGranted()
             }
         case .denied, .restricted:

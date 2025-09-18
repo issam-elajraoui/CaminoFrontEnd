@@ -71,11 +71,11 @@ struct RideSearchView: View {
                 VStack(spacing: 0) {
                     // Carte MapKit (65-70% de l'écran)
                     mapSection
-                        .frame(height: geometry.size.height * 0.65)
+                        .frame(height: geometry.size.height * 0.60)
                     
                     // Formulaire de recherche (35% de l'écran)
                     searchFormSection
-                        .frame(height: geometry.size.height * 0.35)
+                        .frame(height: geometry.size.height * 0.40)
                 }
                 
                 // Toggle langue en overlay
@@ -124,7 +124,7 @@ struct RideSearchView: View {
         }
     }
     
-    // MARK: - Bouton GPS corrigé
+    // MARK: - Bouton GPS
     private var gpsLocationButton: some View {
         Button(action: {
             Task {
@@ -236,17 +236,17 @@ struct RideSearchView: View {
                         
                         Spacer()
                         
-                        HStack(spacing: 4) {
-                            Circle()
-                                .fill(locationService.isLocationAvailable ? Color.green : Color.red)
-                                .frame(width: 8, height: 8)
-                            
-                            Text(locationService.isLocationAvailable ?
-                                 (viewModel.translations["gpsEnabled"] ?? "GPS") :
-                                 (viewModel.translations["gpsDisabled"] ?? "No GPS"))
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
+//                        HStack(spacing: 4) {
+//                            Circle()
+//                                .fill(locationService.isLocationAvailable ? Color.green : Color.red)
+//                                .frame(width: 8, height: 8)
+//                            
+//                            Text(locationService.isLocationAvailable ?
+//                                 (viewModel.translations["gpsEnabled"] ?? "GPS") :
+//                                 (viewModel.translations["gpsDisabled"] ?? "No GPS"))
+//                                .font(.caption)
+//                                .foregroundColor(.secondary)
+//                        }
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 8)
@@ -913,8 +913,8 @@ class RideSearchViewModel: ObservableObject {
     }
     
     private func isValidCoordinate(_ coordinate: CLLocationCoordinate2D) -> Bool {
-        let validLatRange = 44.0...47.0
-        let validLonRange = -77.0...(-74.0)
+        let validLatRange = 43.0...48.0
+        let validLonRange = -78.0...(-73.0)
         
         return validLatRange.contains(coordinate.latitude) &&
                validLonRange.contains(coordinate.longitude)
@@ -952,7 +952,7 @@ class RideSearchViewModel: ObservableObject {
         }
     }
     
-    // MARK: - Recherche de conducteurs
+    // MARK: - Recherche de conducteurs  doit venir d'un WS backend
     func searchDrivers() async {
         guard validateForm() else { return }
         
@@ -1011,7 +1011,7 @@ class RideSearchViewModel: ObservableObject {
         ]
     }
     
-    // MARK: - Calculs et estimations
+    // MARK: - Calculs et estimations   doit venir d'un WS backend
     private func calculateEstimate() {
         guard let pickup = pickupCoordinate,
               let destination = destinationCoordinate else {
