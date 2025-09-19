@@ -1,8 +1,13 @@
+//
+//  HomeView.swift
+//  CaminoTestSwiftUI
+//
+//  Created by Issam EL MOUJAHID on 2025-09-16.
+//
 import SwiftUI
 import Foundation
 import MapKit
 import Combine
-
 // MARK: - Configuration de recherche
 struct RideSearchConfig {
     static let baseURL = "http://10.2.2.181:8083/ride"
@@ -14,7 +19,6 @@ struct RideSearchConfig {
         span: MKCoordinateSpan(latitudeDelta: 0.2, longitudeDelta: 0.2)
     )
 }
-
 // MARK: - Erreurs de recherche
 enum RideSearchError: Error, LocalizedError {
     case networkError
@@ -23,7 +27,6 @@ enum RideSearchError: Error, LocalizedError {
     case invalidLocation
     case serviceUnavailable
     case unknown
-    
     var errorDescription: String? {
         switch self {
         case .networkError:
@@ -39,17 +42,14 @@ enum RideSearchError: Error, LocalizedError {
         }
     }
 }
-
 // MARK: - Annotation pour la carte
 struct LocationAnnotation: Identifiable {
     let id = UUID()
     let coordinate: CLLocationCoordinate2D
     let type: AnnotationType
-    
     enum AnnotationType {
         case pickup
         case destination
-        
         var color: Color {
             switch self {
             case .pickup: return .green
@@ -58,13 +58,11 @@ struct LocationAnnotation: Identifiable {
         }
     }
 }
-
 // MARK: - Vue principale de recherche avec EnvironmentObject
 struct RideSearchView: View {
     @StateObject private var viewModel = RideSearchViewModel()
     @StateObject private var locationService = LocationService()
     @Environment(\.presentationMode) var presentationMode
-    
     var body: some View {
         GeometryReader { geometry in
             ZStack {
@@ -72,12 +70,10 @@ struct RideSearchView: View {
                     // Carte MapKit (65-70% de l'écran)
                     mapSection
                         .frame(height: geometry.size.height * 0.60)
-                    
                     // Formulaire de recherche (35% de l'écran)
                     searchFormSection
                         .frame(height: geometry.size.height * 0.40)
                 }
-                
                 // Toggle langue en overlay
                 VStack {
                     HStack {
@@ -123,7 +119,6 @@ struct RideSearchView: View {
             viewModel.recheckLocationPermissions()
         }
     }
-    
     // MARK: - Bouton GPS
     private var gpsLocationButton: some View {
         Button(action: {
@@ -136,7 +131,6 @@ struct RideSearchView: View {
                     .fill(Color.white)
                     .frame(width: 44, height: 44)
                     .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
-                
                 Image(systemName: locationService.isLocationAvailable ? "location.fill" : "location.slash")
                     .font(.system(size: 18, weight: .medium))
                     .foregroundColor(locationService.isLocationAvailable ? .red : .gray)
@@ -146,7 +140,6 @@ struct RideSearchView: View {
         .scaleEffect(locationService.isLocationAvailable ? 1.0 : 0.9)
         .animation(.easeInOut(duration: 0.2), value: locationService.isLocationAvailable)
     }
-    
     // MARK: - Section Carte
     private var mapSection: some View {
         Map(position: $viewModel.mapPosition) {
@@ -161,7 +154,6 @@ struct RideSearchView: View {
                         )
                 }
             }
-            
             if viewModel.showUserLocation {
                 UserAnnotation()
             }
@@ -185,7 +177,6 @@ struct RideSearchView: View {
             .padding()
         )
     }
-    
     // MARK: - Toggle de langue
     private var languageToggleButtons: some View {
         HStack(spacing: 0) {
@@ -198,7 +189,6 @@ struct RideSearchView: View {
                     .frame(width: 40, height: 28)
                     .background(viewModel.currentLanguage == "en" ? Color.red : Color.clear)
             }
-            
             Button(action: {
                 viewModel.currentLanguage = "fr"
             }) {
@@ -217,7 +207,6 @@ struct RideSearchView: View {
         )
         .shadow(radius: 2)
     }
-    
     // MARK: - Section formulaire de recherche compacte
     private var searchFormSection: some View {
         VStack(spacing: 0) {
@@ -225,7 +214,6 @@ struct RideSearchView: View {
                 .fill(Color.gray.opacity(0.3))
                 .frame(width: 40, height: 4)
                 .padding(.top, 8)
-            
             ScrollView {
                 VStack(spacing: 12) {
                     // Titre avec indicateur GPS
@@ -233,14 +221,12 @@ struct RideSearchView: View {
                         Text(viewModel.translations["findRide"] ?? "Find a Ride")
                             .font(.title3)
                             .fontWeight(.bold)
-                        
                         Spacer()
-                        
 //                        HStack(spacing: 4) {
 //                            Circle()
 //                                .fill(locationService.isLocationAvailable ? Color.green : Color.red)
 //                                .frame(width: 8, height: 8)
-//                            
+//
 //                            Text(locationService.isLocationAvailable ?
 //                                 (viewModel.translations["gpsEnabled"] ?? "GPS") :
 //                                 (viewModel.translations["gpsDisabled"] ?? "No GPS"))
@@ -250,19 +236,15 @@ struct RideSearchView: View {
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 8)
-                    
                     // Message GPS si désactivé
                     if !locationService.isLocationAvailable {
                         HStack {
                             Image(systemName: "location.slash")
                                 .foregroundColor(.orange)
-                            
                             Text(viewModel.translations["enableGpsMessage"] ?? "Enable GPS for better location services")
                                 .font(.caption)
                                 .foregroundColor(.orange)
-                            
                             Spacer()
-                            
                             Button(viewModel.translations["enableGps"] ?? "Enable") {
                                 viewModel.requestLocationPermission()
                             }
@@ -275,7 +257,6 @@ struct RideSearchView: View {
                         .cornerRadius(8)
                         .padding(.horizontal, 20)
                     }
-                    
                     // Champs de localisation compacts
                     VStack(spacing: 8) {
                         CompactLocationField(
@@ -288,7 +269,6 @@ struct RideSearchView: View {
                                 viewModel.setPickupLocation(location)
                             }
                         )
-                        
                         CompactLocationField(
                             text: $viewModel.destinationAddress,
                             placeholder: viewModel.translations["destination"] ?? "Destination",
@@ -301,7 +281,6 @@ struct RideSearchView: View {
                         )
                     }
                     .padding(.horizontal, 20)
-                    
                     // Options compactes sur une ligne
                     HStack(spacing: 16) {
                         // Passagers
@@ -309,7 +288,6 @@ struct RideSearchView: View {
                             Text(viewModel.translations["passengers"] ?? "Passengers")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
-                            
                             HStack(spacing: 8) {
                                 Button("-") {
                                     if viewModel.passengerCount > 1 {
@@ -320,12 +298,10 @@ struct RideSearchView: View {
                                 .background(Color.gray.opacity(0.1))
                                 .cornerRadius(4)
                                 .disabled(viewModel.passengerCount <= 1)
-                                
                                 Text("\(viewModel.passengerCount)")
                                     .font(.footnote)
                                     .fontWeight(.medium)
                                     .frame(minWidth: 16)
-                                
                                 Button("+") {
                                     if viewModel.passengerCount < 8 {
                                         viewModel.passengerCount += 1
@@ -337,9 +313,7 @@ struct RideSearchView: View {
                                 .disabled(viewModel.passengerCount >= 8)
                             }
                         }
-                        
                         Spacer()
-                        
                         // Type de service compact
                         Picker("", selection: $viewModel.serviceType) {
                             Text(viewModel.translations["economy"] ?? "Eco").tag("economy")
@@ -350,7 +324,6 @@ struct RideSearchView: View {
                         .frame(maxWidth: 160)
                     }
                     .padding(.horizontal, 20)
-                    
                     // Bouton de recherche
                     Button(action: {
                         Task {
@@ -363,7 +336,6 @@ struct RideSearchView: View {
                                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
                                     .scaleEffect(0.8)
                             }
-                            
                             Text(viewModel.isSearching ?
                                  (viewModel.translations["searching"] ?? "Searching...") :
                                  (viewModel.translations["findDrivers"] ?? "Find Drivers"))
@@ -377,7 +349,6 @@ struct RideSearchView: View {
                     .cornerRadius(8)
                     .disabled(viewModel.isSearching || !viewModel.canSearch)
                     .padding(.horizontal, 20)
-                    
                     // Estimation si disponible
                     if viewModel.showEstimate {
                         HStack {
@@ -389,9 +360,7 @@ struct RideSearchView: View {
                                     .font(.footnote)
                                     .fontWeight(.semibold)
                             }
-                            
                             Spacer()
-                            
                             VStack(alignment: .trailing, spacing: 2) {
                                 Text(viewModel.translations["distance"] ?? "Distance")
                                     .font(.caption)
@@ -415,7 +384,6 @@ struct RideSearchView: View {
         .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: -5)
     }
 }
-
 // MARK: - Champ de localisation compact utilisant EnvironmentObject
 struct CompactLocationField: View {
     @Binding var text: String
@@ -424,19 +392,16 @@ struct CompactLocationField: View {
     let isPickup: Bool
     let language: String
     let onLocationSelected: (CLLocationCoordinate2D) -> Void
-    
     // Utilisation d'EnvironmentObject au lieu de passer l'instance
     @EnvironmentObject var locationService: LocationService
     @StateObject private var autocompleteManager = CompactAutocompleteManager()
     @State private var showSuggestions = false
-    
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 8) {
                 Circle()
                     .fill(isPickup ? Color.green : Color.red)
                     .frame(width: 8, height: 8)
-                
                 TextField(placeholder, text: $text)
                     .font(.system(size: 14))
                     .disableAutocorrection(true)
@@ -445,7 +410,6 @@ struct CompactLocationField: View {
                         if sanitized != newValue {
                             text = sanitized
                         }
-                        
                         if sanitized.count >= 3 {
                             Task {
                                 await autocompleteManager.searchAddresses(
@@ -460,7 +424,6 @@ struct CompactLocationField: View {
                             showSuggestions = false
                         }
                     }
-                
                 if !text.isEmpty {
                     Button(action: {
                         text = ""
@@ -472,7 +435,6 @@ struct CompactLocationField: View {
                             .font(.system(size: 14))
                     }
                 }
-                
                 if autocompleteManager.isSearching {
                     ProgressView()
                         .scaleEffect(0.7)
@@ -486,7 +448,6 @@ struct CompactLocationField: View {
                 RoundedRectangle(cornerRadius: 6)
                     .stroke(errorMessage.isEmpty ? Color.clear : Color.red, lineWidth: 1)
             )
-            
             // Suggestions d'autocomplétion
             if showSuggestions && !autocompleteManager.suggestions.isEmpty {
                 VStack(spacing: 0) {
@@ -501,19 +462,16 @@ struct CompactLocationField: View {
                                 Image(systemName: "mappin.circle.fill")
                                     .foregroundColor(.red)
                                     .font(.caption)
-                                
                                 Text(suggestion.displayText)
                                     .font(.caption)
                                     .foregroundColor(.primary)
                                     .multilineTextAlignment(.leading)
-                                
                                 Spacer()
                             }
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
                         }
                         .buttonStyle(PlainButtonStyle())
-                        
                         if suggestion.id != autocompleteManager.suggestions.prefix(3).last?.id {
                             Divider()
                         }
@@ -524,7 +482,6 @@ struct CompactLocationField: View {
                 .shadow(radius: 4)
                 .padding(.leading, 18)
             }
-            
             // Messages d'erreur
             if !errorMessage.isEmpty {
                 Text(errorMessage)
@@ -532,7 +489,6 @@ struct CompactLocationField: View {
                     .foregroundColor(.red)
                     .padding(.leading, 18)
             }
-            
             if let searchError = autocompleteManager.searchError {
                 Text(searchError)
                     .font(.caption2)
@@ -541,97 +497,76 @@ struct CompactLocationField: View {
             }
         }
     }
-    
     private func sanitizeLocationInput(_ input: String) -> String {
         let maxLength = 200
         let allowedCharacters = CharacterSet.alphanumerics
             .union(.whitespaces)
             .union(CharacterSet(charactersIn: ",-./()#"))
-        
         let filtered = input.unicodeScalars.filter { allowedCharacters.contains($0) }.map(String.init).joined()
         return String(filtered.prefix(maxLength))
     }
 }
-
 // MARK: - Manager d'autocomplétion compact et thread-safe
 @MainActor
 class CompactAutocompleteManager: ObservableObject {
     @Published var suggestions: [AddressSuggestion] = []
     @Published var isSearching = false
     @Published var searchError: String? = nil
-    
     private var searchTask: Task<Void, Never>?
-    
     func searchAddresses(for query: String, language: String, using locationService: LocationService) async {
         searchTask?.cancel()
-        
         suggestions = []
         searchError = nil
-        
         let sanitizedQuery = sanitizeQuery(query)
         guard sanitizedQuery.count >= 3 else {
             isSearching = false
             return
         }
-        
         guard locationService.isLocationAvailable else {
             searchError = language == "fr" ?
                 "Services de localisation indisponibles" :
                 "Location services unavailable"
             return
         }
-        
         isSearching = true
-        
         searchTask = Task { [weak self] in
             do {
                 try await Task.sleep(for: .milliseconds(500)) // Debounce
-                
                 guard !Task.isCancelled else { return }
-                
                 await self?.performAddressSearch(query: sanitizedQuery, language: language, using: locationService)
             } catch {
                 // Task cancelled
             }
         }
     }
-    
     private func performAddressSearch(query: String, language: String, using locationService: LocationService) async {
         do {
             let coordinate = try await locationService.geocodeAddress(query)
-            
             guard !Task.isCancelled else { return }
-            
             let formattedAddress = try await locationService.reverseGeocode(coordinate)
-            
             let suggestion = AddressSuggestion(
                 id: UUID().uuidString,
                 displayText: formattedAddress.isEmpty ? query : formattedAddress,
                 fullAddress: formattedAddress.isEmpty ? query : formattedAddress,
                 coordinate: coordinate
             )
-            
             await MainActor.run { [weak self] in
                 guard let self = self else { return }
                 self.suggestions = [suggestion]
                 self.isSearching = false
             }
-            
         } catch let locationError as LocationError {
             await handleSearchError(locationError, language: language)
         } catch {
             await handleSearchError(LocationError.unknown, language: language)
         }
     }
-    
     private func handleSearchError(_ locationError: LocationError, language: String) async {
         await MainActor.run { [weak self] in
             guard let self = self else { return }
-            
             self.isSearching = false
             self.suggestions = []
             self.searchError = locationError.localizedDescription(language: language)
-            
             Task {
                 try? await Task.sleep(for: .seconds(3))
                 await MainActor.run { [weak self] in
@@ -642,22 +577,18 @@ class CompactAutocompleteManager: ObservableObject {
             }
         }
     }
-    
     private func sanitizeQuery(_ query: String) -> String {
         let maxLength = 200
         let allowedCharacters = CharacterSet.alphanumerics
             .union(.whitespaces)
             .union(CharacterSet(charactersIn: ",-./()#'\""))
-        
         let filtered = query.unicodeScalars
             .filter { allowedCharacters.contains($0) }
             .map(String.init)
             .joined()
-        
         return String(filtered.prefix(maxLength))
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
-    
     func clearSuggestions() {
         searchTask?.cancel()
         suggestions = []
@@ -665,7 +596,6 @@ class CompactAutocompleteManager: ObservableObject {
         isSearching = false
     }
 }
-
 // MARK: - ViewModel de recherche de course amélioré
 @MainActor
 class RideSearchViewModel: ObservableObject {
@@ -673,55 +603,44 @@ class RideSearchViewModel: ObservableObject {
     @Published var mapPosition = MapCameraPosition.region(RideSearchConfig.ottawaRegion)
     @Published var annotations: [LocationAnnotation] = []
     @Published var showUserLocation = false
-    
     @Published var currentLanguage = "en" {
         didSet {
             clearErrors()
         }
     }
-    
     @Published var pickupAddress = ""
     @Published var destinationAddress = ""
     @Published var passengerCount = 1
     @Published var serviceType = "standard"
-    
     // MARK: - Published Properties - États
     @Published var isSearching = false
     @Published var showError = false
     @Published var showDriverResults = false
     @Published var showLocationPermission = false
     @Published var userFriendlyErrorMessage = ""
-    
     @Published var pickupError = ""
     @Published var destinationError = ""
-    
     @Published var showEstimate = false
     @Published var estimatedFare = "$0.00"
     @Published var estimatedDistance = "0 km"
-    
     @Published var availableDrivers: [Driver] = []
-    
     // MARK: - Services et données privées
     private var locationService: LocationService?
     private var pickupCoordinate: CLLocationCoordinate2D?
     private var destinationCoordinate: CLLocationCoordinate2D?
     private var cancellables = Set<AnyCancellable>()
-    
     // MARK: - Computed Properties
     var canSearch: Bool {
         !pickupAddress.isEmpty && !destinationAddress.isEmpty &&
         pickupCoordinate != nil && destinationCoordinate != nil
     }
-    
     // MARK: - Injection du service
     func setLocationService(_ service: LocationService) {
         self.locationService = service
         setupLocationObservers()
     }
-    
     private func setupLocationObservers() {
         guard let locationService = locationService else { return }
-        
         locationService.$currentLocation
             .receive(on: DispatchQueue.main)
             .sink { [weak self] location in
@@ -729,17 +648,17 @@ class RideSearchViewModel: ObservableObject {
             }
             .store(in: &cancellables)
     }
-    
     func onViewAppear() {
         checkLocationPermissions()
     }
-    
     func recheckLocationPermissions() {
         Task {
             try? await Task.sleep(for: .seconds(0.5))
             checkLocationPermissions()
         }
     }
+    
+    
     
     private func checkLocationPermissions() {
         guard let locationService = locationService else { return }
@@ -748,40 +667,47 @@ class RideSearchViewModel: ObservableObject {
         
         switch status {
         case .notDetermined:
-            showLocationPermission = true
+            // ✅ Demander directement au lieu d'afficher la vue
+            locationService.requestLocationPermission()
+            
         case .denied, .restricted:
-            break
+            showLocationPermission = true  // Vraiment refusé → Afficher la vue
+            
         case .authorizedWhenInUse, .authorizedAlways:
-            locationService.startLocationUpdates()
-            if locationService.currentLocation != nil {
-                showUserLocation = true
-                centerOnUserLocationWithService()
+            // GPS autorisé
+            if CLLocationManager.locationServicesEnabled() {
+                locationService.startLocationUpdates()
+                if locationService.currentLocation != nil {
+                    showUserLocation = true
+                    centerOnUserLocationWithService()
+                }
+            } else {
+                showLocationPermission = true
             }
+            
         @unknown default:
-            showLocationPermission = true
+            locationService.requestLocationPermission()
         }
     }
+    
+    
     
     func requestLocationPermission() {
         locationService?.requestLocationPermission()
     }
-    
     func onLocationPermissionGranted() {
         showLocationPermission = false
         showUserLocation = true
         centerOnUserLocationWithService()
     }
-    
     private func centerOnUserLocationWithService() {
         guard let locationService = locationService,
               let userLocation = locationService.currentLocation else { return }
-        
         mapPosition = .region(MKCoordinateRegion(
             center: userLocation,
             span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
         ))
     }
-    
     // MARK: - Traductions complètes
     var translations: [String: String] {
         if currentLanguage == "fr" {
@@ -842,45 +768,37 @@ class RideSearchViewModel: ObservableObject {
             ]
         }
     }
-    
     // MARK: - Méthodes d'interaction avec la carte
     func handleMapTap(at location: CGPoint) {
         print("Map tapped at: \(location)")
     }
-    
     func centerOnUserLocation() async {
         guard let locationService = locationService else {
             userFriendlyErrorMessage = translations["locationDisabled"] ?? "Location services disabled"
             showError = true
             return
         }
-        
         guard locationService.isLocationAvailable else {
             userFriendlyErrorMessage = translations["locationDisabled"] ?? "Location services disabled"
             showError = true
             return
         }
-        
         do {
             let userLocation: CLLocationCoordinate2D
-            
             if let currentLoc = locationService.currentLocation {
                 userLocation = currentLoc
             } else {
                 userLocation = try await locationService.getCurrentLocationOnce()
             }
-            
             let newRegion = MKCoordinateRegion(
                 center: userLocation,
                 span: MKCoordinateSpan(latitudeDelta: 0.02, longitudeDelta: 0.02)
             )
-            
             await MainActor.run {
                 withAnimation(.easeInOut(duration: 1.0)) {
                     mapPosition = .region(newRegion)
                 }
             }
-            
         } catch let locationError as LocationError {
             await MainActor.run {
                 userFriendlyErrorMessage = locationError.localizedDescription(language: currentLanguage)
@@ -893,72 +811,56 @@ class RideSearchViewModel: ObservableObject {
             }
         }
     }
-    
     // MARK: - Méthodes de gestion des locations
     func setPickupLocation(_ coordinate: CLLocationCoordinate2D) {
         guard isValidCoordinate(coordinate) else { return }
-        
         pickupCoordinate = coordinate
         updateMapAnnotations()
         clearErrors()
     }
-    
     func setDestinationLocation(_ coordinate: CLLocationCoordinate2D) {
         guard isValidCoordinate(coordinate) else { return }
-        
         destinationCoordinate = coordinate
         updateMapAnnotations()
         clearErrors()
         calculateEstimate()
     }
-    
     private func isValidCoordinate(_ coordinate: CLLocationCoordinate2D) -> Bool {
         let validLatRange = 43.0...48.0
         let validLonRange = -78.0...(-73.0)
-        
         return validLatRange.contains(coordinate.latitude) &&
                validLonRange.contains(coordinate.longitude)
     }
-    
     private func updateMapAnnotations() {
         annotations.removeAll()
-        
         if let pickup = pickupCoordinate {
             annotations.append(LocationAnnotation(coordinate: pickup, type: .pickup))
         }
-        
         if let destination = destinationCoordinate {
             annotations.append(LocationAnnotation(coordinate: destination, type: .destination))
         }
-        
         if let pickup = pickupCoordinate, let destination = destinationCoordinate {
             let minLat = min(pickup.latitude, destination.latitude)
             let maxLat = max(pickup.latitude, destination.latitude)
             let minLon = min(pickup.longitude, destination.longitude)
             let maxLon = max(pickup.longitude, destination.longitude)
-            
             let center = CLLocationCoordinate2D(
                 latitude: (minLat + maxLat) / 2,
                 longitude: (minLon + maxLon) / 2
             )
-            
             let span = MKCoordinateSpan(
                 latitudeDelta: max(0.05, (maxLat - minLat) * 1.3),
                 longitudeDelta: max(0.05, (maxLon - minLon) * 1.3)
             )
-            
             let region = MKCoordinateRegion(center: center, span: span)
             mapPosition = .region(region)
         }
     }
-    
     // MARK: - Recherche de conducteurs  doit venir d'un WS backend
     func searchDrivers() async {
         guard validateForm() else { return }
-        
         isSearching = true
         defer { isSearching = false }
-        
         do {
             try await performRideSearch()
             showDriverResults = true
@@ -970,47 +872,37 @@ class RideSearchViewModel: ObservableObject {
             showError = true
         }
     }
-    
     func selectDriver(_ driver: Driver) {
         print("Driver selected: \(driver.id)")
     }
-    
     private func validateForm() -> Bool {
         clearErrors()
         var isValid = true
-        
         if pickupAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             pickupError = translations["pickupRequired"] ?? "Required"
             isValid = false
         }
-        
         if destinationAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             destinationError = translations["destinationRequired"] ?? "Required"
             isValid = false
         }
-        
         return isValid
     }
-    
     private func performRideSearch() async throws {
         guard let pickup = pickupCoordinate,
               let destination = destinationCoordinate else {
             throw RideSearchError.invalidLocation
         }
-        
         guard isValidCoordinate(pickup) && isValidCoordinate(destination) else {
             throw RideSearchError.invalidLocation
         }
-        
         try await Task.sleep(for: .seconds(2))
-        
         // Mock data pour test
         availableDrivers = [
             Driver(id: "1", name: "Jean Dupont", rating: 4.8, eta: "3 min", price: "$12.50"),
             Driver(id: "2", name: "Marie Tremblay", rating: 4.9, eta: "5 min", price: "$11.75")
         ]
     }
-    
     // MARK: - Calculs et estimations   doit venir d'un WS backend
     private func calculateEstimate() {
         guard let pickup = pickupCoordinate,
@@ -1018,21 +910,16 @@ class RideSearchViewModel: ObservableObject {
             showEstimate = false
             return
         }
-        
         let distance = CLLocation(latitude: pickup.latitude, longitude: pickup.longitude)
             .distance(from: CLLocation(latitude: destination.latitude, longitude: destination.longitude))
-        
         let km = distance / 1000
         estimatedDistance = String(format: "%.1f km", km)
-        
         let basePrice = 5.0
         let pricePerKm = serviceType == "premium" ? 2.5 : serviceType == "standard" ? 2.0 : 1.5
         let total = basePrice + (km * pricePerKm)
-        
         estimatedFare = String(format: "$%.2f", total)
         showEstimate = true
     }
-    
     // MARK: - Utilitaires
     private func clearErrors() {
         pickupError = ""
@@ -1040,7 +927,6 @@ class RideSearchViewModel: ObservableObject {
         userFriendlyErrorMessage = ""
     }
 }
-
 // MARK: - Modèle Driver
 struct Driver: Identifiable {
     let id: String
@@ -1049,13 +935,11 @@ struct Driver: Identifiable {
     let eta: String
     let price: String
 }
-
 // MARK: - Vue des résultats conducteurs
 struct DriverResultsView: View {
     let drivers: [Driver]
     let onDriverSelected: (Driver) -> Void
     @Environment(\.presentationMode) var presentationMode
-    
     var body: some View {
         NavigationView {
             List(drivers) { driver in
@@ -1071,12 +955,10 @@ struct DriverResultsView: View {
         }
     }
 }
-
 // MARK: - Vue ligne conducteur
 struct DriverRowView: View {
     let driver: Driver
     let onSelect: () -> Void
-    
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
@@ -1094,14 +976,11 @@ struct DriverRowView: View {
                         .foregroundColor(.secondary)
                 }
             }
-            
             Spacer()
-            
             VStack(alignment: .trailing) {
                 Text(driver.price)
                     .font(.headline)
                     .foregroundColor(.red)
-                
                 Button("Select") {
                     onSelect()
                 }
