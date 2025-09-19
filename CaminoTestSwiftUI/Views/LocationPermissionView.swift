@@ -9,11 +9,11 @@ import CoreLocation
 
 // MARK: - Vue de demande de permissions GPS
 struct LocationPermissionView: View {
-    @StateObject private var locationService = LocationService()
-    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var locationService: LocationService 
+
     
     @State private var currentLanguage = "en"
-    @State private var showSettings = false
+//    @State private var showSettings = false
     
     let onPermissionGranted: () -> Void
     let onCancel: () -> Void
@@ -47,14 +47,7 @@ struct LocationPermissionView: View {
                 }
             }
         }
-        .alert("Paramètres", isPresented: $showSettings) {
-            Button("Ouvrir Paramètres") {
-                openSettings()
-            }
-            Button("Annuler", role: .cancel) { }
-        } message: {
-            Text(translations["settingsMessage"] ?? "Please enable location services in Settings")
-        }
+
         .onAppear {
             checkInitialPermissionStatus()
         }
@@ -289,8 +282,7 @@ struct LocationPermissionView: View {
                 "allowLocation": "Autoriser la localisation",
                 "openSettings": "Ouvrir les paramètres",
                 "continue": "Continuer",
-                "cancel": "Annuler",
-                "settingsMessage": "Veuillez activer les services de localisation dans les paramètres pour utiliser cette fonctionnalité."
+                "cancel": "Annuler"
             ]
         } else {
             return [
@@ -305,8 +297,7 @@ struct LocationPermissionView: View {
                 "allowLocation": "Allow Location Access",
                 "openSettings": "Open Settings",
                 "continue": "Continue",
-                "cancel": "Cancel",
-                "settingsMessage": "Please enable location services in Settings to use this feature."
+                "cancel": "Cancel"
             ]
         }
     }
@@ -318,7 +309,7 @@ struct LocationPermissionView: View {
         case .notDetermined:
             locationService.requestLocationPermission()
         case .denied, .restricted:
-            showSettings = true
+            openSettings()  // ✅ Ouvrir directement les paramètres
         case .authorizedWhenInUse, .authorizedAlways:
             onPermissionGranted()
         @unknown default:
@@ -372,5 +363,6 @@ struct LocationPermissionView_Previews: PreviewProvider {
                 print("Cancelled")
             }
         )
+        .environmentObject(LocationService()) 
     }
 }

@@ -1,3 +1,11 @@
+//
+//  LocationService.swift
+//  CaminoTestSwiftUI
+//
+//  Created by Issam EL MOUJAHID on 2025-09-16.
+//
+
+
 import Foundation
 import CoreLocation
 import MapKit
@@ -266,22 +274,26 @@ class LocationService: NSObject, LocationServiceProtocol {
     // MARK: - Initialisation
     override init() {
         super.init()
+        
+        setupLocationManagerSync()
+        
         Task { @MainActor in
-            await setupLocationManager()
+            await setupLocationManagerAsync()
             await checkInitialPermissions()
         }
     }
     
     // MARK: - Configuration thread-safe
-    private func setupLocationManager() async {
+    private func setupLocationManagerSync() {
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
         locationManager.distanceFilter = 50
-        
         authorizationStatus = locationManager.authorizationStatus
+    }
+    // MARK: - Configuration thread-safe async
+    private func setupLocationManagerAsync() async {
         await updateLocationAvailability()
     }
-    
     private func checkInitialPermissions() async {
         let servicesEnabled = await Task.detached { @Sendable in
             return CLLocationManager.locationServicesEnabled()
