@@ -5,7 +5,7 @@ import Combine
 
 // MARK: - Gestionnaire d'autocomplétion d'adresses corrigé
 @MainActor
-class AddressAutocompleteManager: ObservableObject {
+public class AddressAutocompleteManager: ObservableObject {
     // MARK: - Configuration
     private static let debounceDelay: TimeInterval = 0.5
     private static let minCharacters = 3
@@ -41,6 +41,7 @@ class AddressAutocompleteManager: ObservableObject {
             isSearching = false
             return
         }
+    
         
         // Vérifier si les services de localisation sont disponibles
         guard locationService.isLocationAvailable else {
@@ -146,42 +147,4 @@ class AddressAutocompleteManager: ObservableObject {
     }
 }
 
-// MARK: - Modèle de suggestion d'adresse
-struct AddressSuggestion: Identifiable, Hashable {
-    let id: String
-    let displayText: String
-    let fullAddress: String
-    let coordinate: CLLocationCoordinate2D
-    let completion: MKLocalSearchCompletion? // NOUVEAU champ requis
-    
-    // Initializer avec completion optionnelle pour compatibilité
-    init(id: String, displayText: String, fullAddress: String, coordinate: CLLocationCoordinate2D, completion: MKLocalSearchCompletion? = nil) {
-        self.id = id
-        self.displayText = displayText
-        self.fullAddress = fullAddress
-        self.coordinate = coordinate
-        self.completion = completion
-    }
-    
-    // Conformité à Hashable
-    func hash(into hasher: inout Hasher) {
-        hasher.combine(id)
-    }
-    
-    static func == (lhs: AddressSuggestion, rhs: AddressSuggestion) -> Bool {
-        lhs.id == rhs.id
-    }
-}
 
-// MARK: - Extension CLLocationCoordinate2D pour Hashable
-extension CLLocationCoordinate2D: @retroactive Equatable {}
-extension CLLocationCoordinate2D: @retroactive Hashable {
-    public func hash(into hasher: inout Hasher) {
-        hasher.combine(latitude)
-        hasher.combine(longitude)
-    }
-    
-    public static func == (lhs: CLLocationCoordinate2D, rhs: CLLocationCoordinate2D) -> Bool {
-        return lhs.latitude == rhs.latitude && lhs.longitude == rhs.longitude
-    }
-}

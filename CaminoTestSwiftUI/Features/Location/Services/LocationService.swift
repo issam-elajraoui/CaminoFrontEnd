@@ -2,255 +2,17 @@
 //  LocationService.swift
 //  CaminoTestSwiftUI
 //
-//  Created by Issam EL MOUJAHID on 2025-09-16.
+//  Created by Issam EL MOUJAHID on 2025-09-20.
 //
-
 
 import Foundation
 import CoreLocation
 import MapKit
 import UIKit
 
-// MARK: - Erreurs de géolocalisation
-enum LocationError: Error, LocalizedError {
-    case permissionDenied
-    case locationDisabled
-    case geocodingFailed
-    case invalidAddress
-    case outsideServiceArea
-    case timeout
-    case unknown
-    
-    var errorDescription: String? {
-        switch self {
-        case .permissionDenied:
-            return "Location permission denied"
-        case .locationDisabled:
-            return "Location services disabled"
-        case .geocodingFailed:
-            return "Address not found"
-        case .invalidAddress:
-            return "Invalid address"
-        case .outsideServiceArea:
-            return "Address outside service area"
-        case .timeout:
-            return "Location request timeout"
-        case .unknown:
-            return "Location error"
-        }
-    }
-    
-    func localizedDescription(language: String) -> String {
-        if language == "fr" {
-            switch self {
-            case .permissionDenied:
-                return "Permission de localisation refusée"
-            case .locationDisabled:
-                return "Services de localisation désactivés"
-            case .geocodingFailed:
-                return "Adresse introuvable"
-            case .invalidAddress:
-                return "Adresse invalide"
-            case .outsideServiceArea:
-                return "Adresse hors zone de service"
-            case .timeout:
-                return "Délai de localisation dépassé"
-            case .unknown:
-                return "Erreur de localisation"
-            }
-        }
-        return errorDescription ?? "Location error"
-    }
-}
-
-// MARK: - Protocole LocationServiceProtocol
-@MainActor
-protocol LocationServiceProtocol: ObservableObject {
-    var currentLocation: CLLocationCoordinate2D? { get }
-    var authorizationStatus: CLAuthorizationStatus { get }
-    var isLocationAvailable: Bool { get }
-    
-    func requestLocationPermission()
-    func startLocationUpdates()
-    func stopLocationUpdates()
-    func geocodeAddress(_ address: String) async throws -> CLLocationCoordinate2D
-    func reverseGeocode(_ coordinate: CLLocationCoordinate2D) async throws -> String
-}
-
-// MARK: - Actor pour opérations géolocalisation thread-safe
-actor LocationOperationsActor {
-    private let geocoder = CLGeocoder()
-    private let timeoutInterval: TimeInterval = 10
-    private let searchRadiusKm: Double = 50
-    
-    // MARK: - Géocodage sécurisé et non-bloquant
-    func performGeocode(
-        address: String,
-        searchCenter: CLLocationCoordinate2D
-    ) async throws -> CLLocationCoordinate2D {
-        
-        // Validation d'entrée
-        let sanitizedAddress = sanitizeAddress(address)
-        guard !sanitizedAddress.isEmpty else {
-            throw LocationError.invalidAddress
-        }
-        
-        let searchRegion = CLCircularRegion(
-            center: searchCenter,
-            radius: searchRadiusKm * 1000,
-            identifier: "searchArea"
-        )
-        
-        // Géocodage avec timeout robuste
-        return try await withThrowingTaskGroup(of: CLLocationCoordinate2D.self) { group in
-            // Tâche de géocodage
-            group.addTask {
-                try await self.performGeocodingOperation(
-                    address: sanitizedAddress,
-                    region: searchRegion
-                )
-            }
-            
-            // Tâche de timeout
-            group.addTask {
-                try await Task.sleep(for: .seconds(self.timeoutInterval))
-                throw LocationError.timeout
-            }
-            
-            // Retourner le premier résultat (géocodage ou timeout)
-            defer { group.cancelAll() }
-            return try await group.next()!
-        }
-    }
-    
-    // MARK: - Géocodage inverse sécurisé
-    func performReverseGeocode(
-        coordinate: CLLocationCoordinate2D
-    ) async throws -> String {
-        
-        guard isValidCoordinate(coordinate) else {
-            throw LocationError.invalidAddress
-        }
-        
-        let location = CLLocation(
-            latitude: coordinate.latitude,
-            longitude: coordinate.longitude
-        )
-        
-        return try await withThrowingTaskGroup(of: String.self) { group in
-            // Tâche de géocodage inverse
-            group.addTask {
-                try await self.performReverseGeocodingOperation(location: location)
-            }
-            
-            // Tâche de timeout
-            group.addTask {
-                try await Task.sleep(for: .seconds(self.timeoutInterval))
-                throw LocationError.timeout
-            }
-            
-            // Retourner le premier résultat
-            defer { group.cancelAll() }
-            return try await group.next()!
-        }
-    }
-    
-    // MARK: - Opérations privées
-    private func performGeocodingOperation(
-        address: String,
-        region: CLCircularRegion
-    ) async throws -> CLLocationCoordinate2D {
-        
-        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<CLLocationCoordinate2D, Error>) in
-            geocoder.geocodeAddressString(address, in: region) { placemarks, error in
-                if error != nil {
-                    continuation.resume(throwing: LocationError.geocodingFailed)
-                    return
-                }
-                
-                guard let placemark = placemarks?.first,
-                      let location = placemark.location else {
-                    continuation.resume(throwing: LocationError.geocodingFailed)
-                    return
-                }
-                
-                let coordinate = location.coordinate
-                continuation.resume(returning: coordinate)
-            }
-        }
-    }
-    
-    private func performReverseGeocodingOperation(
-        location: CLLocation
-    ) async throws -> String {
-        
-        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, Error>) in
-            geocoder.reverseGeocodeLocation(location) { placemarks, error in
-                if error != nil {
-                    continuation.resume(throwing: LocationError.geocodingFailed)
-                    return
-                }
-                
-                guard let placemark = placemarks?.first else {
-                    continuation.resume(throwing: LocationError.geocodingFailed)
-                    return
-                }
-                
-                let address = self.formatAddress(from: placemark)
-                continuation.resume(returning: address)
-            }
-        }
-    }
-    
-    // MARK: - Utilitaires thread-safe
-    private func sanitizeAddress(_ address: String) -> String {
-        let maxLength = 200
-        let trimmed = String(address.prefix(maxLength))
-        let allowedCharacters = CharacterSet.alphanumerics
-            .union(.whitespaces)
-            .union(CharacterSet(charactersIn: ",-./()#'\""))
-        
-        let filtered = trimmed.unicodeScalars
-            .filter { allowedCharacters.contains($0) }
-            .map(String.init)
-            .joined()
-        
-        return filtered.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-    
-    private func isValidCoordinate(_ coordinate: CLLocationCoordinate2D) -> Bool {
-        return CLLocationCoordinate2DIsValid(coordinate) &&
-               coordinate.latitude >= -90 && coordinate.latitude <= 90 &&
-               coordinate.longitude >= -180 && coordinate.longitude <= 180
-    }
-    
-    private func formatAddress(from placemark: CLPlacemark) -> String {
-        var components: [String] = []
-        
-        if let streetNumber = placemark.subThoroughfare {
-            components.append(streetNumber)
-        }
-        
-        if let streetName = placemark.thoroughfare {
-            components.append(streetName)
-        }
-        
-        if let city = placemark.locality {
-            components.append(city)
-        }
-        
-        if let province = placemark.administrativeArea {
-            components.append(province)
-        }
-        
-        let result = components.joined(separator: " ")
-        return result.isEmpty ? "Address" : result
-    }
-}
-
 // MARK: - Service de géolocalisation principal avec réactivité UI corrigée
 @MainActor
-class LocationService: NSObject, LocationServiceProtocol {
+public class LocationService: NSObject, LocationServiceProtocol {
     // MARK: - Configuration
     private static let ottawaFallbackLocation = CLLocationCoordinate2D(
         latitude: 45.4215,
@@ -259,9 +21,9 @@ class LocationService: NSObject, LocationServiceProtocol {
     private static let timeoutInterval: TimeInterval = 10
     
     // MARK: - Published Properties - Thread-safe sur MainActor
-    @Published var currentLocation: CLLocationCoordinate2D?
-    @Published var authorizationStatus: CLAuthorizationStatus = .notDetermined
-    @Published var isLocationAvailable: Bool = false
+    @Published public var currentLocation: CLLocationCoordinate2D?
+    @Published public var authorizationStatus: CLAuthorizationStatus = .notDetermined
+    @Published public var isLocationAvailable: Bool = false
     
     // MARK: - Private Properties
     private let locationManager = CLLocationManager()
@@ -294,19 +56,22 @@ class LocationService: NSObject, LocationServiceProtocol {
     private func setupLocationManagerAsync() async {
         await updateLocationAvailability()
     }
+//    private func checkInitialPermissions() async {
+//        let servicesEnabled = await Task.detached { @Sendable in
+//            return CLLocationManager.locationServicesEnabled()
+//        }.value
+//        
+//        if !servicesEnabled {
+//            isLocationAvailable = false
+//        }
+//        await updateLocationAvailability()
+//    }
     private func checkInitialPermissions() async {
-        let servicesEnabled = await Task.detached { @Sendable in
-            return CLLocationManager.locationServicesEnabled()
-        }.value
-        
-        if !servicesEnabled {
-            isLocationAvailable = false
-        }
         await updateLocationAvailability()
     }
     
     // MARK: - Gestion des permissions avec réactivité UI
-    func requestLocationPermission() {
+    public func requestLocationPermission() {
         Task { @MainActor in
             switch authorizationStatus {
             case .notDetermined:
@@ -365,7 +130,7 @@ class LocationService: NSObject, LocationServiceProtocol {
     }
     
     // MARK: - Démarrage/Arrêt de la localisation thread-safe
-    func startLocationUpdates() {
+    public func startLocationUpdates() {
         Task { @MainActor in
             await startLocationUpdatesInternal()
         }
@@ -391,14 +156,14 @@ class LocationService: NSObject, LocationServiceProtocol {
         locationManager.startUpdatingLocation()
     }
     
-    func stopLocationUpdates() {
+    public func stopLocationUpdates() {
         Task { @MainActor in
             locationManager.stopUpdatingLocation()
         }
     }
     
     // MARK: - Géocodage non-bloquant via Actor
-    func geocodeAddress(_ address: String) async throws -> CLLocationCoordinate2D {
+    public func geocodeAddress(_ address: String) async throws -> CLLocationCoordinate2D {
         let searchCenter = await MainActor.run { () -> CLLocationCoordinate2D in
             return currentLocation ?? Self.ottawaFallbackLocation
         }
@@ -410,7 +175,7 @@ class LocationService: NSObject, LocationServiceProtocol {
     }
     
     // MARK: - Géocodage inverse non-bloquant via Actor
-    func reverseGeocode(_ coordinate: CLLocationCoordinate2D) async throws -> String {
+    public func reverseGeocode(_ coordinate: CLLocationCoordinate2D) async throws -> String {
         return try await operationsActor.performReverseGeocode(coordinate: coordinate)
     }
     
@@ -464,15 +229,21 @@ class LocationService: NSObject, LocationServiceProtocol {
     }
     
     // MARK: - Utilitaires thread-safe
+//    private func updateLocationAvailability() async {
+//        let servicesEnabled = await Task.detached { @Sendable in
+//            return CLLocationManager.locationServicesEnabled()
+//        }.value
+//        
+//        let hasPermission = (authorizationStatus == .authorizedWhenInUse ||
+//                           authorizationStatus == .authorizedAlways)
+//        
+//        isLocationAvailable = servicesEnabled && hasPermission
+//    }
     private func updateLocationAvailability() async {
-        let servicesEnabled = await Task.detached { @Sendable in
-            return CLLocationManager.locationServicesEnabled()
-        }.value
-        
         let hasPermission = (authorizationStatus == .authorizedWhenInUse ||
                            authorizationStatus == .authorizedAlways)
         
-        isLocationAvailable = servicesEnabled && hasPermission
+        isLocationAvailable = hasPermission
     }
     
     private func handleLocationUpdate(_ coordinate: CLLocationCoordinate2D) async {
@@ -530,10 +301,11 @@ class LocationService: NSObject, LocationServiceProtocol {
     }
 }
 
-// MARK: - CLLocationManagerDelegate avec réactivité UI corrigée
+
+// MARK: - CLLocationManagerDelegate avec réactivité UI
 extension LocationService: CLLocationManagerDelegate {
     
-    nonisolated func locationManager(
+    nonisolated public func locationManager(
         _ manager: CLLocationManager,
         didUpdateLocations locations: [CLLocation]
     ) {
@@ -554,7 +326,7 @@ extension LocationService: CLLocationManagerDelegate {
         }
     }
     
-    nonisolated func locationManager(
+    nonisolated public func locationManager(
         _ manager: CLLocationManager,
         didFailWithError error: Error
     ) {
@@ -564,7 +336,7 @@ extension LocationService: CLLocationManagerDelegate {
         }
     }
     
-    nonisolated func locationManager(
+    nonisolated public func locationManager(
         _ manager: CLLocationManager,
         didChangeAuthorization status: CLAuthorizationStatus
     ) {

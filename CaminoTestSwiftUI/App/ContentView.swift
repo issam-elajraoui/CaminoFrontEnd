@@ -1,3 +1,4 @@
+
 import SwiftUI
 
 struct ContentView: View {
@@ -9,7 +10,7 @@ struct ContentView: View {
                     .fontWeight(.bold)
                 
                 NavigationLink("Test Registration") {
-                    RegisterView()
+                    RideSearchView()
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)

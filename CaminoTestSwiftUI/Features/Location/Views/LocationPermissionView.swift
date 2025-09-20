@@ -9,7 +9,7 @@ import CoreLocation
 
 // MARK: - Vue de demande de permissions GPS
 struct LocationPermissionView: View {
-    @EnvironmentObject var locationService: LocationService 
+    @EnvironmentObject var locationService: LocationService
 
     
     @State private var currentLanguage = "en"
@@ -81,44 +81,12 @@ struct LocationPermissionView: View {
             Spacer()
             
             // Toggle langue
-            languageToggleButtons
+            LanguageToggle(currentLanguage: $currentLanguage)
         }
         .padding(.horizontal, 20)
         .padding(.top, 20)
         .padding(.bottom, 10)
     }
-    
-    // MARK: - Toggle de langue (réutilisé)
-    private var languageToggleButtons: some View {
-        HStack(spacing: 0) {
-            Button(action: {
-                currentLanguage = "en"
-            }) {
-                Text("EN")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(currentLanguage == "en" ? .white : .gray)
-                    .frame(width: 40, height: 28)
-                    .background(currentLanguage == "en" ? Color.red : Color.clear)
-            }
-            
-            Button(action: {
-                currentLanguage = "fr"
-            }) {
-                Text("FR")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(currentLanguage == "fr" ? .white : .gray)
-                    .frame(width: 40, height: 28)
-                    .background(currentLanguage == "fr" ? Color.red : Color.clear)
-            }
-        }
-        .background(Color.white)
-        .cornerRadius(14)
-        .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(Color.gray.opacity(0.3), lineWidth: 1)
-        )
-    }
-    
     // MARK: - Section titre et icône
     private var titleSection: some View {
         VStack(spacing: 20) {
@@ -363,6 +331,7 @@ struct LocationPermissionView_Previews: PreviewProvider {
                 print("Cancelled")
             }
         )
-        .environmentObject(LocationService()) 
+        .environmentObject(LocationService())
     }
 }
+
