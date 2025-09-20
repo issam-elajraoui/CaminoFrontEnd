@@ -1,5 +1,6 @@
 import Foundation
 import CoreLocation
+import MapKit
 import Combine
 
 // MARK: - Gestionnaire d'autocomplétion d'adresses corrigé
@@ -151,6 +152,16 @@ struct AddressSuggestion: Identifiable, Hashable {
     let displayText: String
     let fullAddress: String
     let coordinate: CLLocationCoordinate2D
+    let completion: MKLocalSearchCompletion? // NOUVEAU champ requis
+    
+    // Initializer avec completion optionnelle pour compatibilité
+    init(id: String, displayText: String, fullAddress: String, coordinate: CLLocationCoordinate2D, completion: MKLocalSearchCompletion? = nil) {
+        self.id = id
+        self.displayText = displayText
+        self.fullAddress = fullAddress
+        self.coordinate = coordinate
+        self.completion = completion
+    }
     
     // Conformité à Hashable
     func hash(into hasher: inout Hasher) {
