@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>MBXAccessToken</key>
+	<string>pk.eyJ1IjoiaXNzYW1lbGFqcmFvdWkiLCJhIjoiY21mc25qcm9mMG9iczJtcHV5MGc3eHk4ZSJ9.LjRgJ9sgs2LyMBUAUxhWrg</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>This app uses your location to find nearby drivers.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>This app uses your location to find nearby drivers.</string>
+</dict>
+</plist>

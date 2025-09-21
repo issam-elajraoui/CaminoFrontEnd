@@ -28,7 +28,7 @@ extension RideSearchViewModel: MKLocalSearchCompleterDelegate {
     nonisolated func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {
         Task { @MainActor in
             print("MKLocalSearchCompleter error: \(error.localizedDescription)")
-            await handleAutocompleteError(error)  // ← Utiliser la nouvelle méthode
+            await handleAutocompleteError(error)
         }
     }
     

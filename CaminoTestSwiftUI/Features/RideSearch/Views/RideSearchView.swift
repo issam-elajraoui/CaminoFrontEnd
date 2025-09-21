@@ -3,22 +3,26 @@ import Foundation
 import MapKit
 import Combine
 
-// MARK: - Vue principale de recherche avec EnvironmentObject
+// MARK: - Vue principale de recherche avec Mapbox et pickup GPS automatique
 struct RideSearchView: View {
     private static let maxSuggestions = 7
     @StateObject private var viewModel = RideSearchViewModel()
     @StateObject private var locationService = LocationService()
     @Environment(\.presentationMode) var presentationMode
     
+    // ✅ État pour coordonnées Mapbox
+    @State private var mapboxCenter: CLLocationCoordinate2D = CLLocationCoordinate2D(latitude: 45.4215, longitude: -75.6972)
+    @State private var cancellables = Set<AnyCancellable>()
+    
     var body: some View {
         GeometryReader { geometry in
             ZStack {
                 VStack(spacing: 0) {
-                    // Carte MapKit (65-70% de l'écran)
-                    mapSection
+                    // ✅ Carte Mapbox (30% de l'écran)
+                    mapboxSection
                         .frame(height: geometry.size.height * 0.30)
                     
-                    // Formulaire de recherche (35% de l'écran)
+                    // Formulaire de recherche (70% de l'écran)
                     searchFormSection
                         .frame(height: geometry.size.height * 0.70)
                 }
@@ -63,13 +67,40 @@ struct RideSearchView: View {
         .onAppear {
             viewModel.setLocationService(locationService)
             viewModel.onViewAppear()
+            setupMapboxObserver()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             viewModel.recheckLocationPermissions()
         }
     }
     
-    // MARK: - Bouton GPS
+    // ✅ NOUVEAU - Section Mapbox
+    private var mapboxSection: some View {
+        ZStack {
+            // ✅ MapboxWrapper remplace Map SwiftUI
+            MapboxWrapper(
+                center: $mapboxCenter,
+                annotations: $viewModel.annotations,
+                route: $viewModel.currentRoute,
+                showUserLocation: $viewModel.showUserLocation,
+                onMapTap: { coordinate in
+                    viewModel.handleMapTap(at: CGPoint(x: 0, y: 0)) // Simplified tap handling
+                }
+            )
+            
+            // Overlay bouton GPS (conservé)
+            VStack {
+                HStack {
+                    gpsLocationButton
+                    Spacer()
+                }
+                Spacer()
+            }
+            .padding()
+        }
+    }
+    
+    // MARK: - Bouton GPS (inchangé)
     private var gpsLocationButton: some View {
         Button(action: {
             Task {
@@ -92,50 +123,7 @@ struct RideSearchView: View {
         .animation(.easeInOut(duration: 0.2), value: locationService.isLocationAvailable)
     }
     
-    // MARK: - Section Carte
-    private var mapSection: some View {
-        Map(position: $viewModel.mapPosition) {
-            ForEach(viewModel.annotations) { annotation in
-                Annotation("", coordinate: annotation.coordinate) {
-                    Circle()
-                        .fill(annotation.type.color)
-                        .frame(width: 16, height: 16)
-                        .overlay(
-                            Circle()
-                                .stroke(Color.white, lineWidth: 2)
-                        )
-                }
-            }
-            // Afficher l'itinéraire
-            if let route = viewModel.currentRoute {
-                MapPolyline(route.polyline)
-                    .stroke(.blue, lineWidth: 4)
-            }
-            if viewModel.showUserLocation {
-                UserAnnotation()
-            }
-        }
-        .mapStyle(.standard)
-        .mapControls {
-            MapUserLocationButton()
-                .hidden()
-        }
-        .onTapGesture(coordinateSpace: .local) { location in
-            viewModel.handleMapTap(at: location)
-        }
-        .overlay(
-            VStack {
-                HStack {
-                    gpsLocationButton
-                    Spacer()
-                }
-                Spacer()
-            }
-                .padding()
-        )
-    }
-    
-    // MARK: - Toggle de langue
+    // MARK: - Toggle de langue (inchangé)
     private var languageToggleButtons: some View {
         HStack(spacing: 0) {
             Button(action: {
@@ -166,7 +154,7 @@ struct RideSearchView: View {
         .shadow(radius: 2)
     }
     
-    // MARK: - Section formulaire de recherche compacte
+    // MARK: - Section formulaire de recherche avec pickup GPS
     private var searchFormSection: some View {
         VStack(spacing: 0) {
             Capsule()
@@ -208,25 +196,40 @@ struct RideSearchView: View {
                         .padding(.horizontal, 20)
                     }
                     
-                    // Container pour les champs et suggestions avec gestion du z-index
+                    // ✅ Container pour les champs avec gestion pickup GPS
                     ZStack(alignment: .top) {
                         VStack(spacing: 8) {
-                            // Champs de localisation compacts
+                            // ✅ Champ pickup GPS automatique
                             CentralizedLocationField(
-                                text: $viewModel.pickupAddress,
+                                text: Binding(
+                                    get: { viewModel.displayPickupAddress },
+                                    set: { newValue in
+                                        if viewModel.useCustomPickup {
+                                            viewModel.onLocationTextChanged(newValue, for: .pickup)
+                                        }
+                                    }
+                                ),
                                 placeholder: viewModel.translations["pickupLocation"] ?? "Pickup Location",
                                 errorMessage: viewModel.pickupError,
                                 isPickup: true,
                                 fieldType: .pickup,
                                 activeField: $viewModel.activeField,
                                 onTextChange: { newText in
-                                    viewModel.onLocationTextChanged(newText, for: .pickup)
+                                    if viewModel.useCustomPickup {
+                                        viewModel.onLocationTextChanged(newText, for: .pickup)
+                                    }
                                 },
                                 onLocationSelected: { location in
                                     viewModel.setPickupLocation(location)
+                                },
+                                // ✅ Nouveaux paramètres pickup GPS
+                                isGPSMode: !viewModel.useCustomPickup,
+                                onLongPress: {
+                                    viewModel.enableCustomPickup()
                                 }
                             )
                             
+                            // Champ destination (focus par défaut)
                             CentralizedLocationField(
                                 text: $viewModel.destinationAddress,
                                 placeholder: viewModel.translations["destination"] ?? "Destination",
@@ -250,7 +253,25 @@ struct RideSearchView: View {
                     }
                     .padding(.horizontal, 20)
                     
-                    // Options compactes sur une ligne
+                    // ✅ Indicateur mode pickup GPS
+                    if !viewModel.useCustomPickup && viewModel.isPickupFromGPS {
+                        HStack {
+                            Image(systemName: "location.fill")
+                                .font(.caption)
+                                .foregroundColor(.green)
+                            Text(viewModel.translations["usingGpsLocation"] ?? "Using GPS location")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text(viewModel.translations["tapToCustomize"] ?? "Long press to customize")
+                                .font(.caption2)
+                                .foregroundColor(.gray)
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 4)
+                    }
+                    
+                    // Options compactes sur une ligne (inchangé)
                     HStack(spacing: 16) {
                         // Passagers
                         HStack(spacing: 4) {
@@ -298,7 +319,7 @@ struct RideSearchView: View {
                     }
                     .padding(.horizontal, 20)
                     
-                    // Bouton de recherche
+                    // Bouton de recherche (inchangé)
                     Button(action: {
                         Task {
                             await viewModel.searchDrivers()
@@ -324,7 +345,7 @@ struct RideSearchView: View {
                     .disabled(viewModel.isSearching || !viewModel.canSearch)
                     .padding(.horizontal, 20)
                     
-                    // Estimation si disponible
+                    // Estimation si disponible (inchangé)
                     if viewModel.showEstimate {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
@@ -359,7 +380,7 @@ struct RideSearchView: View {
         .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: -5)
     }
     
-    // MARK: - Liste de suggestions centralisée
+    // MARK: - Liste de suggestions centralisée (inchangée)
     private var suggestionsList: some View {
         VStack(spacing: 0) {
             ForEach(viewModel.suggestions.prefix(Self.maxSuggestions), id: \.id) { suggestion in
@@ -396,4 +417,42 @@ struct RideSearchView: View {
         .zIndex(1000)
     }
     
+    // ✅ NOUVEAU - Observer changements position pour Mapbox
+    private func setupMapboxObserver() {
+        // Observer les changements d'annotations pour mettre à jour la carte Mapbox
+        viewModel.$annotations
+            .receive(on: DispatchQueue.main)
+            .sink { [self] annotations in
+                updateMapboxCenter(for: annotations)
+            }
+            .store(in: &cancellables)
+        
+        // Observer la position utilisateur
+        locationService.$currentLocation
+            .compactMap { $0 }
+            .receive(on: DispatchQueue.main)
+            .sink { [self] location in
+                mapboxCenter = location
+            }
+            .store(in: &cancellables)
+    }
+    
+    private func updateMapboxCenter(for annotations: [LocationAnnotation]) {
+        guard !annotations.isEmpty else { return }
+        
+        if annotations.count == 1 {
+            mapboxCenter = annotations[0].coordinate
+        } else if annotations.count >= 2 {
+            // Calculer le centre entre pickup et destination
+            let pickup = annotations.first { $0.type == .pickup }?.coordinate
+            let destination = annotations.first { $0.type == .destination }?.coordinate
+            
+            if let pickup = pickup, let destination = destination {
+                mapboxCenter = CLLocationCoordinate2D(
+                    latitude: (pickup.latitude + destination.latitude) / 2,
+                    longitude: (pickup.longitude + destination.longitude) / 2
+                )
+            }
+        }
+    }
 }
