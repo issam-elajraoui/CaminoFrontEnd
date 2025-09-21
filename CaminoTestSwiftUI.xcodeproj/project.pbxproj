@@ -52,17 +52,29 @@
 		C2CF3C172E7F8B4A00910C90 /* Exceptions for "CaminoTestSwiftUI" folder in "CaminoTestSwiftUI" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				"Features/RideSearch/ViewModels/RideSearchViewModel+Extensions.swift.old",
 				Info.plist,
 			);
 			target = C20288AE2E6E9C2E006D1927 /* CaminoTestSwiftUI */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
+/* Begin PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+		C29B9F312E80967100587CBC /* Exceptions for "CaminoTestSwiftUI" folder in "Compile Sources" phase from "CaminoTestSwiftUI" target */ = {
+			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
+			buildPhase = C20288AB2E6E9C2E006D1927 /* Sources */;
+			membershipExceptions = (
+				"Features/RideSearch/ViewModels/RideSearchViewModel+Extensions.swift.old",
+			);
+		};
+/* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		C20288B12E6E9C2E006D1927 /* CaminoTestSwiftUI */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				C2CF3C172E7F8B4A00910C90 /* Exceptions for "CaminoTestSwiftUI" folder in "CaminoTestSwiftUI" target */,
+				C29B9F312E80967100587CBC /* Exceptions for "CaminoTestSwiftUI" folder in "Compile Sources" phase from "CaminoTestSwiftUI" target */,
 			);
 			path = CaminoTestSwiftUI;
 			sourceTree = "<group>";
@@ -426,6 +438,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = CaminoTestSwiftUI/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Camino;
 				INFOPLIST_KEY_LSApplicationCategoryType = "";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Camino uses your location for ride tracking and safety features.";
 				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = "";
@@ -463,6 +476,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = CaminoTestSwiftUI/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Camino;
 				INFOPLIST_KEY_LSApplicationCategoryType = "";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Camino uses your location for ride tracking and safety features.";
 				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = "";

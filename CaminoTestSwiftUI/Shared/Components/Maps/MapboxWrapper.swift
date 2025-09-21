@@ -61,47 +61,65 @@ public struct MapboxWrapper: UIViewRepresentable {
     }
     
     // MARK: - Création Mapbox corrigée
-    private func createMapboxView(context: Context) -> MapView {
-        let validCenter = MapboxConfig.isValidCanadianCoordinate(center) ? center : MapboxConfig.fallbackRegion
-        
-        let mapInitOptions = MapInitOptions(
-            cameraOptions: CameraOptions(
-                center: validCenter,
-                zoom: MapboxConfig.sanitizeZoom(MapboxConfig.defaultZoom)
-            ),
-            styleURI: StyleURI(rawValue: MapboxConfig.styleURL)
-        )
-        
-        let mapView = MapView(frame: .zero, mapInitOptions: mapInitOptions)
-        
-        setupCanadianTheme(mapView)
-        
-        // CORRECTION: Supprimer délégué gestures (non nécessaire)
-        // mapView.gestures.delegate = context.coordinator
-        
-        // CORRECTION: Gestion événement map loaded avec DispatchQueue
-        mapView.mapboxMap.onMapLoaded.observeNext { [weak mapView] _ in
-            guard let mapView = mapView else { return }
-            DispatchQueue.main.async {
-                // Éviter modification état pendant view update
-                Task { @MainActor in
-                    self.mapView = mapView
-                    self.updateAnnotations(mapView)
-                    self.updateRoute(mapView)
+    // MARK: - Création Mapbox corrigée
+        private func createMapboxView(context: Context) -> MapView {
+            let validCenter = MapboxConfig.isValidCanadianCoordinate(center) ? center : MapboxConfig.fallbackRegion
+            
+            let mapInitOptions = MapInitOptions(
+                cameraOptions: CameraOptions(
+                    center: validCenter,
+                    zoom: MapboxConfig.sanitizeZoom(MapboxConfig.defaultZoom)
+                ),
+                styleURI: StyleURI(rawValue: MapboxConfig.styleURL)
+            )
+            
+            let mapView = MapView(frame: .zero, mapInitOptions: mapInitOptions)
+            
+            setupCanadianTheme(mapView)
+            
+            // ✅ CORRECTION: Observer les changements de caméra pour mettre à jour le binding center
+            mapView.mapboxMap.onCameraChanged.observeNext { [weak mapView] _ in
+                guard let mapView = mapView else { return }
+                
+                // Obtenir le centre actuel de la caméra
+                let currentCenter = mapView.cameraState.center
+                
+                // ✅ CORRECTION: Mettre à jour le binding center sur le main thread
+                DispatchQueue.main.async {
+                    // Éviter les boucles infinies en vérifiant si le centre a vraiment changé
+                    let distanceThreshold = 0.0001 // Environ 10 mètres
+                    let latDiff = abs(currentCenter.latitude - self.center.latitude)
+                    let lonDiff = abs(currentCenter.longitude - self.center.longitude)
+                    
+                    if latDiff > distanceThreshold || lonDiff > distanceThreshold {
+                        print("🐛 DEBUG MapboxWrapper - Camera center changed to: \(currentCenter)")
+                        self.center = currentCenter
+                    }
                 }
+            }.store(in: &cancellables)
+            
+            // CORRECTION: Gestion événement map loaded avec DispatchQueue
+            mapView.mapboxMap.onMapLoaded.observeNext { [weak mapView] _ in
+                guard let mapView = mapView else { return }
+                DispatchQueue.main.async {
+                    // Éviter modification état pendant view update
+                    Task { @MainActor in
+                        self.mapView = mapView
+                        self.updateAnnotations(mapView)
+                        self.updateRoute(mapView)
+                    }
+                }
+            }.store(in: &cancellables)
+            
+            let tapGesture = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleMapTap(_:)))
+            mapView.addGestureRecognizer(tapGesture)
+            
+            // CORRECTION: Éviter modification état dans createMapboxView
+            DispatchQueue.main.async {
+                self.isMapboxAvailable = true
             }
-        }.store(in: &cancellables)
-        
-        let tapGesture = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleMapTap(_:)))
-        mapView.addGestureRecognizer(tapGesture)
-        
-        // CORRECTION: Éviter modification état dans createMapboxView
-        DispatchQueue.main.async {
-            self.isMapboxAvailable = true
+            return mapView
         }
-        return mapView
-    }
-    
     @State private var cancellables = Set<AnyCancellable>()
     
     // MARK: - Mode dégradé (inchangé)

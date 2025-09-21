@@ -1,12 +1,11 @@
 import Foundation
 import MapKit
 
-// MARK: - Extension du ViewModel pour MKLocalSearchCompleterDelegate
+// MARK: - Extension MKLocalSearchCompleterDelegate (existant - inchangé)
 extension RideSearchViewModel: MKLocalSearchCompleterDelegate {
     
     nonisolated func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
         Task { @MainActor in
-            // Convertir les résultats en AddressSuggestion
             let newSuggestions = completer.results.compactMap { completion -> AddressSuggestion? in
                 let displayText = formatCompletionForDisplay(completion)
                 
@@ -32,17 +31,14 @@ extension RideSearchViewModel: MKLocalSearchCompleterDelegate {
         }
     }
     
-    // MARK: - Formatage des résultats de completion
     private func formatCompletionForDisplay(_ completion: MKLocalSearchCompletion) -> String {
         let title = completion.title
         let subtitle = completion.subtitle
         
-        // Si le subtitle est vide ou redondant, utiliser seulement le titre
         if subtitle.isEmpty || title.contains(subtitle) {
             return title
         }
         
-        // Sinon, combiner titre et sous-titre
         return "\(title), \(subtitle)"
     }
 }

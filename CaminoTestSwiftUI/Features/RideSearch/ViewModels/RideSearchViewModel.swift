@@ -4,7 +4,7 @@ import MapKit
 import Combine
 import CoreLocation
 
-// MARK: - ViewModel de recherche de course avec pickup GPS automatique
+// MARK: - ViewModel de recherche avec mode pinpoint
 @MainActor
 class RideSearchViewModel: NSObject, ObservableObject {
     // MARK: - Published Properties - Interface
@@ -20,7 +20,7 @@ class RideSearchViewModel: NSObject, ObservableObject {
     @Published var destinationAddress = ""
     @Published var passengerCount = 1
     @Published var serviceType = "standard"
-    
+
     // MARK: - Published Properties - États
     @Published var isSearching = false
     @Published var showError = false
@@ -33,15 +33,29 @@ class RideSearchViewModel: NSObject, ObservableObject {
     @Published var estimatedFare = "$0.00"
     @Published var estimatedDistance = "0 km"
     @Published var availableDrivers: [Driver] = []
+
+    // MARK: - ✅ NOUVEAU - Mode Pinpoint
+    @Published var isPinpointMode: Bool = false
+    @Published var activeFieldForPinpoint: ActiveLocationField = .destination
+    @Published var mapCenterCoordinate: CLLocationCoordinate2D?
+    @Published var isResolvingAddress: Bool = false
+    @Published var pinpointAddress: String = ""
     
-    // MARK: - Published Properties - Suggestions centralisées
+    // Mode de sélection d'adresse
+    enum LocationSelectionMode {
+        case search    // Mode recherche textuelle
+        case pinpoint  // Mode pinpoint visuel
+    }
+    @Published var selectionMode: LocationSelectionMode = .search
+
+    // MARK: - Published Properties - Suggestions centralisées (existant)
     @Published var suggestions: [AddressSuggestion] = []
-    @Published var activeField: ActiveLocationField = .destination //  Destination par défaut
+    @Published var activeField: ActiveLocationField = .destination
     @Published var showSuggestions = false
     @Published var isLoadingSuggestions = false
     @Published var suggestionError: String? = nil
-    
-    // MARK: -  NOUVEAU - Gestion pickup GPS automatique
+
+    // MARK: - Gestion pickup GPS automatique (existant)
     @Published var useCustomPickup: Bool = false {
         didSet {
             handlePickupModeChange()
@@ -50,28 +64,29 @@ class RideSearchViewModel: NSObject, ObservableObject {
     @Published var isPickupFromGPS: Bool = true
     @Published var gpsPickupAddress: String = ""
     @Published var customPickupAddress: String = ""
-    
+
     // MARK: - Propriétés pour l'itinéraire
     @Published var currentRoute: RouteResult?
     @Published var isCalculatingRoute = false
-    
+
     // MARK: - Services et données privées
     private var locationService: LocationService?
     private var pickupCoordinate: CLLocationCoordinate2D?
     private var destinationCoordinate: CLLocationCoordinate2D?
     private var cancellables = Set<AnyCancellable>()
     private var searchTask: Task<Void, Never>?
+    private var resolveTask: Task<Void, Never>? // Pour le géocodage inverse pinpoint
+    
     private lazy var searchCompleter: MKLocalSearchCompleter = {
         let completer = MKLocalSearchCompleter()
         completer.delegate = self
         completer.resultTypes = [.address, .pointOfInterest]
         
-        // Configurer la région de recherche si position GPS disponible
         if let locationService = locationService,
            let userLocation = locationService.currentLocation {
             let region = MKCoordinateRegion(
                 center: userLocation,
-                latitudinalMeters: 50000, // 50km de rayon
+                latitudinalMeters: 50000,
                 longitudinalMeters: 50000
             )
             completer.region = region
@@ -84,7 +99,182 @@ class RideSearchViewModel: NSObject, ObservableObject {
         super.init()
     }
     
-    // MARK: -  Computed Properties modifiées
+    // MARK: - ✅ NOUVEAU - Méthodes mode pinpoint
+    func enablePinpointMode(for field: ActiveLocationField) {
+        selectionMode = .pinpoint
+        isPinpointMode = true
+        activeFieldForPinpoint = field
+        
+        // Fermer les suggestions du mode recherche
+        showSuggestions = false
+        suggestions = []
+        searchTask?.cancel()
+        
+        // ✅ CORRECTION: Initialiser le centre selon le champ et les coordonnées existantes
+        var initialCenter: CLLocationCoordinate2D?
+        
+        switch field {
+        case .destination:
+            // Si destination déjà définie, utiliser ses coordonnées
+            if let destCoord = destinationCoordinate {
+                initialCenter = destCoord
+            }
+            
+        case .pickup:
+            // Si pickup custom déjà défini, utiliser ses coordonnées
+            if useCustomPickup, let pickupCoord = pickupCoordinate {
+                initialCenter = pickupCoord
+            }
+            
+        case .none:
+            break
+        }
+        
+        // Sinon utiliser position GPS ou fallback Ottawa
+        if initialCenter == nil {
+            if let userLocation = locationService?.currentLocation {
+                initialCenter = userLocation
+            } else {
+                initialCenter = CLLocationCoordinate2D(latitude: 45.4215, longitude: -75.6972)
+            }
+        }
+        
+        mapCenterCoordinate = initialCenter
+        
+        // Démarrer la résolution d'adresse immédiatement
+        if let center = initialCenter {
+            onMapCenterChanged(coordinate: center)
+        }
+    }
+    
+    func disablePinpointMode() {
+        selectionMode = .search
+        isPinpointMode = false
+        isResolvingAddress = false
+        pinpointAddress = ""
+        
+        // Annuler les tâches en cours
+        resolveTask?.cancel()
+        
+        // Retour au focus destination par défaut
+        activeField = .destination
+    }
+    
+    func onMapCenterChanged(coordinate: CLLocationCoordinate2D) {
+        guard isPinpointMode else { return }
+        
+        mapCenterCoordinate = coordinate
+        
+        // ✅ CORRECTION: Mettre à jour immédiatement les coordonnées du champ concerné
+        switch activeFieldForPinpoint {
+        case .destination:
+            destinationCoordinate = coordinate
+            updateMapAnnotations()
+            
+        case .pickup:
+            if useCustomPickup {
+                pickupCoordinate = coordinate
+                updateMapAnnotations()
+            }
+            
+        case .none:
+            break
+        }
+        
+        // Annuler la résolution précédente
+        resolveTask?.cancel()
+        
+        // Valider la coordonnée
+        guard isValidCoordinate(coordinate) else {
+            pinpointAddress = translations["invalidLocation"] ?? "Invalid location"
+            isResolvingAddress = false
+            return
+        }
+        
+        isResolvingAddress = true
+        
+        // Géocodage inverse avec debounce
+        resolveTask = Task { [weak self] in
+            do {
+                // Debounce de 500ms
+                try await Task.sleep(for: .milliseconds(500))
+                
+                guard !Task.isCancelled else { return }
+                
+                await self?.performReverseGeocode(coordinate: coordinate)
+            } catch {
+                // Task annulé, ne rien faire
+            }
+        }
+    }
+    
+    private func performReverseGeocode(coordinate: CLLocationCoordinate2D) async {
+        guard let locationService = locationService else {
+            await updatePinpointAddress("Location service unavailable")
+            return
+        }
+        
+        do {
+            let address = try await locationService.reverseGeocode(coordinate)
+            await updatePinpointAddress(address.isEmpty ? "Unknown location" : address)
+        } catch {
+            let errorMessage = if let locationError = error as? LocationError {
+                locationError.localizedDescription(language: currentLanguage)
+            } else {
+                translations["addressNotFound"] ?? "Address not found"
+            }
+            await updatePinpointAddress(errorMessage)
+        }
+    }
+    
+    private func updatePinpointAddress(_ address: String) async {
+        await MainActor.run { [weak self] in
+            guard let self = self else { return }
+            
+            self.pinpointAddress = address
+            self.isResolvingAddress = false
+            
+            // ✅ CORRECTION: Mettre à jour automatiquement l'adresse du champ concerné
+            switch self.activeFieldForPinpoint {
+            case .destination:
+                self.destinationAddress = address
+                // Pas besoin de mettre à jour les coordonnées ici, elles sont déjà dans mapCenterCoordinate
+                
+            case .pickup:
+                if self.useCustomPickup {
+                    self.customPickupAddress = address
+                    self.pickupAddress = address
+                    self.isPickupFromGPS = false
+                }
+                
+            case .none:
+                break
+            }
+        }
+    }
+    
+    func confirmPinpointSelection() {
+        guard isPinpointMode,
+              let coordinate = mapCenterCoordinate,
+              isValidCoordinate(coordinate),
+              !pinpointAddress.isEmpty else {
+            return
+        }
+        
+        // ✅ CORRECTION SIMPLIFIÉE: Les coordonnées et adresses sont déjà mises à jour en temps réel
+        // Il suffit de déclencher le calcul de route si nécessaire
+        if activeFieldForPinpoint == .destination && pickupCoordinate != nil {
+            Task { await calculateRoute() }
+        } else if activeFieldForPinpoint == .pickup && destinationCoordinate != nil {
+            Task { await calculateRoute() }
+        }
+        
+        // Revenir au mode recherche
+        disablePinpointMode()
+        clearErrors()
+    }
+    
+    // MARK: - Computed Properties modifiées
     var canSearch: Bool {
         let hasValidPickup = isPickupFromGPS ?
             (pickupCoordinate != nil) :
@@ -95,12 +285,11 @@ class RideSearchViewModel: NSObject, ObservableObject {
                destinationCoordinate != nil
     }
     
-    //  Propriété calculée pour affichage pickup
     var displayPickupAddress: String {
         return useCustomPickup ? customPickupAddress : gpsPickupAddress
     }
     
-    // MARK: - Injection du service
+    // MARK: - Injection du service (existant)
     func setLocationService(_ service: LocationService) {
         self.locationService = service
         setupLocationObservers()
@@ -109,7 +298,6 @@ class RideSearchViewModel: NSObject, ObservableObject {
     private func setupLocationObservers() {
         guard let locationService = locationService else { return }
         
-        //  Observer la position GPS pour pickup automatique
         locationService.$currentLocation
             .receive(on: DispatchQueue.main)
             .sink { [weak self] location in
@@ -118,7 +306,7 @@ class RideSearchViewModel: NSObject, ObservableObject {
             .store(in: &cancellables)
     }
     
-    // MARK: -  NOUVEAU - Gestion pickup GPS automatique
+    // MARK: - Gestion pickup GPS automatique (existant - inchangé)
     private func handleGPSLocationUpdate(_ location: CLLocationCoordinate2D?) {
         showUserLocation = (location != nil)
         
@@ -128,7 +316,6 @@ class RideSearchViewModel: NSObject, ObservableObject {
             return
         }
         
-        // Si mode GPS actif, mettre à jour pickup automatiquement
         if !useCustomPickup {
             updateGPSPickup(location)
         }
@@ -138,7 +325,6 @@ class RideSearchViewModel: NSObject, ObservableObject {
         pickupCoordinate = coordinate
         isPickupFromGPS = true
         
-        // Géocodage inverse pour affichage
         Task {
             do {
                 let address = try await locationService?.reverseGeocode(coordinate) ?? ""
@@ -158,14 +344,12 @@ class RideSearchViewModel: NSObject, ObservableObject {
         
         updateMapAnnotations()
         
-        // Si on a déjà une destination, calculer la route
         if destinationCoordinate != nil {
             Task { await calculateRoute() }
         }
     }
     
     private func handleGPSUnavailable() {
-        // Fallback Ottawa si GPS indisponible
         let ottawaCoordinate = CLLocationCoordinate2D(latitude: 45.4215, longitude: -75.6972)
         
         if !useCustomPickup {
@@ -179,21 +363,17 @@ class RideSearchViewModel: NSObject, ObservableObject {
     
     private func handlePickupModeChange() {
         if useCustomPickup {
-            // Passer en mode pickup custom
             isPickupFromGPS = false
             pickupAddress = customPickupAddress
             
-            // Si le champ custom est vide, nettoyer pickup
             if customPickupAddress.isEmpty {
                 pickupCoordinate = nil
                 updateMapAnnotations()
             }
         } else {
-            // Retour au mode GPS
             isPickupFromGPS = true
             pickupAddress = gpsPickupAddress
             
-            // Restaurer coordonnée GPS si disponible
             if let locationService = locationService,
                let gpsLocation = locationService.currentLocation {
                 updateGPSPickup(gpsLocation)
@@ -205,10 +385,9 @@ class RideSearchViewModel: NSObject, ObservableObject {
         clearErrors()
     }
     
-    // MARK: -  Méthode pour activer pickup custom (tap long)
     func enableCustomPickup() {
         useCustomPickup = true
-        customPickupAddress = gpsPickupAddress // Pré-remplir avec adresse GPS
+        customPickupAddress = gpsPickupAddress
         activeField = .pickup
     }
     
@@ -218,10 +397,10 @@ class RideSearchViewModel: NSObject, ObservableObject {
         activeField = .destination
     }
     
+    // MARK: - Méthodes existantes (inchangées)
     func onViewAppear() {
         checkLocationPermissions()
         
-        //  Focus automatique sur destination au démarrage
         if activeField == .none {
             activeField = .destination
         }
@@ -292,7 +471,6 @@ class RideSearchViewModel: NSObject, ObservableObject {
             self.showSuggestions = false
             self.suggestionError = error.localizedDescription(language: currentLanguage)
             
-            // Effacer l'erreur après 3 secondes
             Task {
                 try? await Task.sleep(for: .seconds(3))
                 await MainActor.run { [weak self] in
@@ -304,9 +482,8 @@ class RideSearchViewModel: NSObject, ObservableObject {
         }
     }
     
-    // MARK: -  Gestion centralisée des suggestions modifiée
+    // MARK: - Gestion centralisée des suggestions (existant - inchangé)
     func onLocationTextChanged(_ newText: String, for field: ActiveLocationField) {
-        //  Gérer les changements selon le type de champ
         switch field {
         case .pickup:
             if useCustomPickup {
@@ -314,7 +491,6 @@ class RideSearchViewModel: NSObject, ObservableObject {
                 pickupAddress = newText
                 performSuggestionSearch(newText, for: field)
             }
-            // Si GPS mode, ignorer les changements de texte
             
         case .destination:
             destinationAddress = newText
@@ -326,22 +502,18 @@ class RideSearchViewModel: NSObject, ObservableObject {
     }
     
     private func performSuggestionSearch(_ newText: String, for field: ActiveLocationField) {
-        // Annuler la recherche précédente
         searchTask?.cancel()
         
-        // Nettoyer les résultats précédents
         suggestions = []
         showSuggestions = false
         suggestionError = nil
         
-        // Validation de base
         let sanitizedQuery = sanitizeQuery(newText)
         guard sanitizedQuery.count >= 3 else {
             isLoadingSuggestions = false
             return
         }
         
-        // Vérifier si les services de localisation sont disponibles
         guard let locationService = locationService, locationService.isLocationAvailable else {
             suggestionError = currentLanguage == "fr" ?
                 "Services de localisation indisponibles" :
@@ -351,15 +523,10 @@ class RideSearchViewModel: NSObject, ObservableObject {
         
         isLoadingSuggestions = true
         
-        // Nouvelle recherche avec debounce
         searchTask = Task { [weak self] in
             do {
-                // Attendre le délai de debounce
                 try await Task.sleep(for: .milliseconds(500))
-                
-                // Vérifier si la tâche n'a pas été annulée
                 guard !Task.isCancelled else { return }
-                
                 await self?.performAddressSearch(query: sanitizedQuery, for: field)
             } catch {
                 // Task annulé ou erreur de sleep
@@ -367,37 +534,31 @@ class RideSearchViewModel: NSObject, ObservableObject {
         }
     }
     
-    // MARK: - Recherche d'adresses (inchangée)
     private func performAddressSearch(query: String, for field: ActiveLocationField) async {
         guard let locationService = locationService else { return }
         
-        // Mettre à jour la région de recherche avec la position actuelle
         if let userLocation = locationService.currentLocation {
             let region = MKCoordinateRegion(
                 center: userLocation,
-                latitudinalMeters: 50000, // 50km de rayon
+                latitudinalMeters: 50000,
                 longitudinalMeters: 50000
             )
             searchCompleter.region = region
         }
         
-        // Démarrer la recherche avec MKLocalSearchCompleter
         searchCompleter.queryFragment = query
     }
     
     func selectSuggestion(_ suggestion: AddressSuggestion) {
-        // Si on a une completion, résoudre les coordonnées
         if let completion = suggestion.completion {
             Task {
                 await resolveCompletionCoordinates(completion, suggestion: suggestion)
             }
         } else {
-            // Utiliser les coordonnées existantes (fallback)
             applySuggestionSelection(suggestion)
         }
     }
     
-    // MARK: - Résolution des coordonnées à partir de MKLocalSearchCompletion
     private func resolveCompletionCoordinates(_ completion: MKLocalSearchCompletion, suggestion: AddressSuggestion) async {
         let searchRequest = MKLocalSearch.Request(completion: completion)
         let localSearch = MKLocalSearch(request: searchRequest)
@@ -408,7 +569,6 @@ class RideSearchViewModel: NSObject, ObservableObject {
             if let mapItem = response.mapItems.first {
                 let coordinate = mapItem.placemark.coordinate
                 
-                // Créer une nouvelle suggestion avec les vraies coordonnées
                 let updatedSuggestion = AddressSuggestion(
                     id: suggestion.id,
                     displayText: suggestion.displayText,
@@ -433,7 +593,6 @@ class RideSearchViewModel: NSObject, ObservableObject {
         }
     }
     
-    // MARK: -  Application de la sélection de suggestion modifiée
     private func applySuggestionSelection(_ suggestion: AddressSuggestion) {
         switch activeField {
         case .pickup:
@@ -443,7 +602,6 @@ class RideSearchViewModel: NSObject, ObservableObject {
                 setPickupLocation(suggestion.coordinate)
                 isPickupFromGPS = false
             }
-            // Si GPS mode, ignorer la sélection
             
         case .destination:
             destinationAddress = suggestion.displayText
@@ -453,10 +611,9 @@ class RideSearchViewModel: NSObject, ObservableObject {
             break
         }
         
-        // Fermer les suggestions
         showSuggestions = false
         suggestions = []
-        activeField = .destination //  Retour focus destination après sélection pickup
+        activeField = .destination
         searchTask?.cancel()
     }
     
@@ -475,7 +632,7 @@ class RideSearchViewModel: NSObject, ObservableObject {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
     
-    // MARK: -  Traductions complètes avec nouveaux termes
+    // MARK: - Traductions complètes avec nouveaux termes pinpoint
     var translations: [String: String] {
         if currentLanguage == "fr" {
             return [
@@ -498,18 +655,25 @@ class RideSearchViewModel: NSObject, ObservableObject {
                 "locationError": "Erreur de localisation",
                 "addressNotFound": "Adresse introuvable",
                 "invalidAddress": "Adresse invalide",
+                "invalidLocation": "Position invalide",
                 "permissionDenied": "Permission de localisation refusée",
                 "locationDisabled": "Services de localisation désactivés",
                 "gpsEnabled": "GPS",
                 "gpsDisabled": "Pas de GPS",
                 "enableGpsMessage": "Activez le GPS pour de meilleurs services de localisation",
                 "enableGps": "Activer",
-                //  Nouveaux termes
                 "currentLocation": "Position actuelle",
                 "fallbackLocation": "Ottawa, ON",
                 "tapToCustomize": "Appui long pour modifier",
                 "usingGpsLocation": "Position GPS utilisée",
-                "customPickupEnabled": "Départ personnalisé activé"
+                "customPickupEnabled": "Départ personnalisé activé",
+                // ✅ NOUVEAU - Traductions pinpoint
+                "searchMode": "Recherche",
+                "pinpointMode": "Sur la carte",
+                "selectOnMap": "Choisir sur la carte",
+                "confirmLocation": "Confirmer la position",
+                "resolvingAddress": "Recherche de l'adresse...",
+                "dragMapToChoose": "Déplacez la carte pour choisir"
             ]
         } else {
             return [
@@ -532,26 +696,32 @@ class RideSearchViewModel: NSObject, ObservableObject {
                 "locationError": "Location error",
                 "addressNotFound": "Address not found",
                 "invalidAddress": "Invalid address",
+                "invalidLocation": "Invalid location",
                 "permissionDenied": "Location permission denied",
                 "locationDisabled": "Location services disabled",
                 "gpsEnabled": "GPS",
                 "gpsDisabled": "No GPS",
                 "enableGpsMessage": "Enable GPS for better location services",
                 "enableGps": "Enable",
-                //  Nouveaux termes
                 "currentLocation": "Current Location",
                 "fallbackLocation": "Ottawa, ON",
                 "tapToCustomize": "Long press to customize",
                 "usingGpsLocation": "Using GPS location",
-                "customPickupEnabled": "Custom pickup enabled"
+                "customPickupEnabled": "Custom pickup enabled",
+                // ✅ NOUVEAU - Traductions pinpoint
+                "searchMode": "Search",
+                "pinpointMode": "On map",
+                "selectOnMap": "Select on map",
+                "confirmLocation": "Confirm location",
+                "resolvingAddress": "Finding address...",
+                "dragMapToChoose": "Drag map to choose"
             ]
         }
     }
     
-    // MARK: - Méthodes d'interaction avec la carte
+    // MARK: - Méthodes d'interaction avec la carte (existant)
     func handleMapTap(at location: CGPoint) {
-        // Fermer les suggestions lors du tap sur la carte
-        activeField = .destination //  Retour destination par défaut
+        activeField = .destination
         showSuggestions = false
         searchTask?.cancel()
         print("Map tapped at: \(location)")
@@ -601,7 +771,7 @@ class RideSearchViewModel: NSObject, ObservableObject {
         }
     }
     
-    // MARK: - Méthodes de gestion des locations
+    // MARK: - Méthodes de gestion des locations (existant)
     func setPickupLocation(_ coordinate: CLLocationCoordinate2D) {
         guard isValidCoordinate(coordinate) else { return }
         pickupCoordinate = coordinate
@@ -658,10 +828,9 @@ class RideSearchViewModel: NSObject, ObservableObject {
         }
     }
     
-    // MARK: - Recherche de conducteurs
+    // MARK: - Recherche de conducteurs (existant)
     func searchDrivers() async {
-        // Fermer les suggestions lors de la recherche
-        activeField = .destination //  Reset focus destination
+        activeField = .destination
         showSuggestions = false
         searchTask?.cancel()
         
@@ -686,26 +855,22 @@ class RideSearchViewModel: NSObject, ObservableObject {
         print("Driver selected: \(driver.id)")
     }
     
-    // MARK: -  Validation formulaire modifiée
     private func validateForm() -> Bool {
         clearErrors()
         var isValid = true
         
-        // Validation pickup selon le mode
         if useCustomPickup {
             if customPickupAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 pickupError = translations["pickupRequired"] ?? "Required"
                 isValid = false
             }
         } else {
-            // Mode GPS - vérifier que la coordonnée existe
             if pickupCoordinate == nil {
                 pickupError = translations["locationError"] ?? "GPS location required"
                 isValid = false
             }
         }
         
-        // Validation destination (inchangée)
         if destinationAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             destinationError = translations["destinationRequired"] ?? "Required"
             isValid = false
@@ -726,14 +891,13 @@ class RideSearchViewModel: NSObject, ObservableObject {
         
         try await Task.sleep(for: .seconds(2))
         
-        // Mock data pour test
         availableDrivers = [
             Driver(id: "1", name: "Jean Dupont", rating: 4.8, eta: "3 min", price: "$12.50"),
             Driver(id: "2", name: "Marie Tremblay", rating: 4.9, eta: "5 min", price: "$11.75")
         ]
     }
     
-    // MARK: - Calculs et estimations (inchangées)
+    // MARK: - Calculs et estimations (existant)
     private func calculateEstimate() {
         guard let pickup = pickupCoordinate,
               let destination = destinationCoordinate else {
@@ -791,7 +955,6 @@ class RideSearchViewModel: NSObject, ObservableObject {
     private func updateEstimateFromRoute(_ route: RouteResult) {
         estimatedDistance = route.distanceFormatted
         
-        // Calcul du prix basé sur la distance réelle
         let km = route.distance / 1000
         let basePrice = 5.0
         let pricePerKm = serviceType == "premium" ? 2.5 : serviceType == "standard" ? 2.0 : 1.5
@@ -799,5 +962,47 @@ class RideSearchViewModel: NSObject, ObservableObject {
         
         estimatedFare = String(format: "$%.2f", total)
         showEstimate = true
+    }
+}
+
+// MARK: - Extension MKLocalSearchCompleterDelegate (existant - inchangé)
+extension RideSearchViewModel: MKLocalSearchCompleterDelegate {
+    
+    nonisolated func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
+        Task { @MainActor in
+            let newSuggestions = completer.results.compactMap { completion -> AddressSuggestion? in
+                let displayText = formatCompletionForDisplay(completion)
+                
+                return AddressSuggestion(
+                    id: UUID().uuidString,
+                    displayText: displayText,
+                    fullAddress: completion.title + ", " + completion.subtitle,
+                    coordinate: CLLocationCoordinate2D(latitude: 0, longitude: 0),
+                    completion: completion
+                )
+            }
+            
+            suggestions = Array(newSuggestions.prefix(7))
+            showSuggestions = !suggestions.isEmpty
+            isLoadingSuggestions = false
+        }
+    }
+       
+    nonisolated func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {
+        Task { @MainActor in
+            print("MKLocalSearchCompleter error: \(error.localizedDescription)")
+            await handleAutocompleteError(error)
+        }
+    }
+    
+    private func formatCompletionForDisplay(_ completion: MKLocalSearchCompletion) -> String {
+        let title = completion.title
+        let subtitle = completion.subtitle
+        
+        if subtitle.isEmpty || title.contains(subtitle) {
+            return title
+        }
+        
+        return "\(title), \(subtitle)"
     }
 }
