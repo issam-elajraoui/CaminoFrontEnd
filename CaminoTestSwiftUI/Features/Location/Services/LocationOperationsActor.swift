@@ -129,11 +129,15 @@ actor LocationOperationsActor {
                     return
                 }
                 
-                let address = self.formatAddress(from: placemark)
-                continuation.resume(returning: address)
+                Task { @MainActor in
+                                let address = await self.formatAddress(from: placemark)
+                                continuation.resume(returning: address)
+                            }
             }
         }
     }
+    
+    
     
     // MARK: - Utilitaires thread-safe
     private func sanitizeAddress(_ address: String) -> String {
@@ -157,7 +161,8 @@ actor LocationOperationsActor {
                coordinate.longitude >= -180 && coordinate.longitude <= 180
     }
     
-    private func formatAddress(from placemark: CLPlacemark) -> String {
+    @MainActor
+    private func formatAddress(from placemark: CLPlacemark) async -> String {
         var components: [String] = []
         
         if let streetNumber = placemark.subThoroughfare {
@@ -179,4 +184,29 @@ actor LocationOperationsActor {
         let result = components.joined(separator: " ")
         return result.isEmpty ? "Address" : result
     }
+    
+    // MARK: - Utilitaires statiques
+    private static func formatAddressStatic(from placemark: CLPlacemark) -> String {
+        var components: [String] = []
+        
+        if let streetNumber = placemark.subThoroughfare {
+            components.append(streetNumber)
+        }
+        
+        if let streetName = placemark.thoroughfare {
+            components.append(streetName)
+        }
+        
+        if let city = placemark.locality {
+            components.append(city)
+        }
+        
+        if let province = placemark.administrativeArea {
+            components.append(province)
+        }
+        
+        let result = components.joined(separator: " ")
+        return result.isEmpty ? "Address" : result
+    }
+    
 }

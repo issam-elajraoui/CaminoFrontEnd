@@ -3,7 +3,7 @@ import CoreLocation
 import SwiftUI
 
 // MARK: - Annotation pour la carte
-struct LocationAnnotation: Identifiable {
+struct LocationAnnotation: Identifiable, Equatable {
     let id = UUID()
     let coordinate: CLLocationCoordinate2D
     let type: AnnotationType
@@ -18,5 +18,8 @@ struct LocationAnnotation: Identifiable {
             case .destination: return .red
             }
         }
+    }
+    static func == (lhs: LocationAnnotation, rhs: LocationAnnotation) -> Bool {
+        return lhs.id == rhs.id
     }
 }

@@ -18,17 +18,17 @@ struct RideSearchView: View {
     @State private var bottomSheetHeight: CGFloat = 0.7  // 70% par défaut = mode recherche
     @State private var isDraggingSheet: Bool = false
     
-    // ✅ Seuils pour changement automatique de mode
+    // Seuils pour changement automatique de mode
     private let searchModeThreshold: CGFloat = 0.55  // Au-dessus = mode recherche
     private let pinpointModeThreshold: CGFloat = 0.55 // En-dessous = mode pinpoint
     
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                // ✅ Carte Mapbox plein écran
+                // Carte Mapbox plein écran
                 mapboxFullScreenSection
                 
-                // ✅ Bottom Sheet draggable
+                // Bottom Sheet draggable
                 DraggableBottomSheet(
                     heightPercentage: $bottomSheetHeight,
                     isDragging: $isDraggingSheet
@@ -47,7 +47,7 @@ struct RideSearchView: View {
                     Spacer()
                 }
                 
-                // ✅ Instructions pinpoint (seulement si mode pinpoint actif)
+                // Instructions pinpoint (seulement si mode pinpoint actif)
                 if viewModel.isPinpointMode {
                     pinpointInstructions(geometry: geometry)
                 }
@@ -86,35 +86,70 @@ struct RideSearchView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             viewModel.recheckLocationPermissions()
         }
-        // ✅ NOUVEAU - Observer les changements de position du sheet
-        .onChange(of: bottomSheetHeight) { _, newHeight in
-            handleSheetPositionChange(newHeight)
+        // NOUVEAU - Observer les changements de position du sheet
+        .onChange(of: bottomSheetHeight) { oldValue, newValue in
+            // Éviter updates trop fréquents
+            guard abs(newValue - oldValue) > 0.05 else { return }
+            
+            // Debounce les changements
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(100))
+                
+                let now = Date()
+                guard now.timeIntervalSince(lastSheetUpdate) > 0.2 else { return }
+                lastSheetUpdate = now
+                
+                if newValue <= pinpointModeThreshold && !viewModel.isPinpointMode {
+                    activatePinpointMode()
+                } else if newValue > searchModeThreshold && viewModel.isPinpointMode {
+                    deactivatePinpointMode()
+                }
+            }
         }
+        
         .onChange(of: isDraggingSheet) { _, isDragging in
             if !isDragging {
-                // Fin du drag, vérifier si on doit changer de mode
-                handleSheetPositionChange(bottomSheetHeight)
+                // Fin du drag, attendre stabilisation
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(200))
+                    
+                    let now = Date()
+                    guard now.timeIntervalSince(lastSheetUpdate) > 0.2 else { return }
+                    lastSheetUpdate = now
+                    
+                    if bottomSheetHeight <= pinpointModeThreshold && !viewModel.isPinpointMode {
+                        activatePinpointMode()
+                    } else if bottomSheetHeight > searchModeThreshold && viewModel.isPinpointMode {
+                        deactivatePinpointMode()
+                    }
+                }
             }
         }
     }
     
-    // MARK: - ✅ Gestion automatique du changement de mode
-    private func handleSheetPositionChange(_ height: CGFloat) {
-        if height <= pinpointModeThreshold && !viewModel.isPinpointMode {
-            // Passer en mode pinpoint
-            activatePinpointMode()
-        } else if height > searchModeThreshold && viewModel.isPinpointMode {
-            // Passer en mode recherche
-            deactivatePinpointMode()
-        }
-    }
-    
+    // MARK: - Gestion automatique du changement de mode
+    @State private var lastSheetUpdate: Date = Date.distantPast
+
+//    private mutating func handleSheetPositionChange(_ height: CGFloat) {
+//        // Throttling des updates
+//        let now = Date()
+//        guard now.timeIntervalSince(lastSheetUpdate) > 0.2 else { return }
+//        lastSheetUpdate = now
+//        
+//        if height <= pinpointModeThreshold && !viewModel.isPinpointMode {
+//            activatePinpointMode()
+//        } else if height > searchModeThreshold && viewModel.isPinpointMode {
+//            deactivatePinpointMode()
+//        }
+//    }
+
     private func activatePinpointMode() {
         withAnimation(.easeInOut(duration: 0.3)) {
+            // Toujours activer pour le champ destination
             viewModel.enablePinpointMode(for: .destination)
         }
     }
-    
+
     private func deactivatePinpointMode() {
         withAnimation(.easeInOut(duration: 0.3)) {
             viewModel.disablePinpointMode()
@@ -134,14 +169,22 @@ struct RideSearchView: View {
                     viewModel.handleMapTap(at: CGPoint(x: 0, y: 0))
                 }
             )
-            .onChange(of: mapboxCenter) { _, newCenter in
-                // Notification du changement de centre pour mode pinpoint
-                if viewModel.isPinpointMode {
-                    viewModel.onMapCenterChanged(coordinate: newCenter)
+            .onChange(of: mapboxCenter) { oldValue, newValue in
+                // Éviter updates trop fréquents
+                let distance = CLLocation(latitude: oldValue.latitude, longitude: oldValue.longitude)
+                    .distance(from: CLLocation(latitude: newValue.latitude, longitude: newValue.longitude))
+                
+                guard distance > 10 else { return } // Minimum 10 mètres
+                
+                // Update avec debounce
+                Task { @MainActor in
+                    if viewModel.isPinpointMode {
+                        viewModel.onMapCenterChanged(coordinate: newValue)
+                    }
                 }
             }
             
-            // ✅ Pinpoint fixe au centre (visible seulement en mode pinpoint)
+            // Pinpoint fixe au centre (visible seulement en mode pinpoint)
             PinpointIndicator(
                 isActive: viewModel.isPinpointMode,
                 isResolving: viewModel.isResolvingAddress
@@ -160,22 +203,53 @@ struct RideSearchView: View {
         }
     }
     
-    // MARK: - ✅ Instructions pinpoint simplifiées
+    // MARK: - Instructions pinpoint simplifiées
     private func pinpointInstructions(geometry: GeometryProxy) -> some View {
         VStack {
-            // Instructions en haut
-            HStack {
-                Spacer()
-                Text(viewModel.translations["dragMapToChoose"] ?? "Drag map to choose location")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 10)
-                    .background(Color.black.opacity(0.7))
-                    .cornerRadius(20)
-                    .shadow(radius: 4)
-                Spacer()
+            // Instructions en haut avec adresse temps réel
+            VStack(spacing: 8) {
+                HStack {
+                    Spacer()
+                    Text(viewModel.translations["dragMapToChoose"] ?? "Drag map to choose location")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 10)
+                        .background(Color.black.opacity(0.7))
+                        .cornerRadius(20)
+                        .shadow(radius: 4)
+                    Spacer()
+                }
+                
+                // MARK: - Affichage adresse en temps réel
+                if !viewModel.pinpointAddress.isEmpty || viewModel.isResolvingAddress {
+                    HStack {
+                        Spacer()
+                        HStack(spacing: 8) {
+                            if viewModel.isResolvingAddress {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    .scaleEffect(0.7)
+                            }
+                            
+                            Text(viewModel.isResolvingAddress ?
+                                 (viewModel.translations["resolvingAddress"] ?? "Finding address...") :
+                                 viewModel.pinpointAddress)
+                                .font(.footnote)
+                                .fontWeight(.medium)
+                                .foregroundColor(.white)
+                                .multilineTextAlignment(.center)
+                                .lineLimit(2)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color.black.opacity(0.6))
+                        .cornerRadius(15)
+                        .shadow(radius: 3)
+                        Spacer()
+                    }
+                }
             }
             .padding(.top, 120)
             
@@ -238,7 +312,7 @@ struct RideSearchView: View {
         .shadow(radius: 2)
     }
     
-    // MARK: - ✅ Contenu bottom sheet simplifié
+    // MARK: - Contenu bottom sheet simplifié
     private var bottomSheetContent: some View {
         ScrollView {
             VStack(spacing: 12) {
@@ -251,7 +325,7 @@ struct RideSearchView: View {
                     
                     Spacer()
                     
-                    // ✅ Indicateur discret du mode actuel
+                    // Indicateur discret du mode actuel
                     HStack(spacing: 4) {
                         Image(systemName: viewModel.isPinpointMode ? "map.fill" : "magnifyingglass")
                             .font(.caption)
@@ -269,7 +343,7 @@ struct RideSearchView: View {
                     gpsDisabledWarning
                 }
                 
-                // ✅ Champs d'adresse (affichage conditionnel selon le mode)
+                // Champs d'adresse
                 addressFieldsSection
                 
                 // Indicateur mode pickup GPS
@@ -277,10 +351,6 @@ struct RideSearchView: View {
                     gpsPickupIndicator
                 }
                 
-                // ✅ Panneau de confirmation pinpoint (si mode pinpoint et adresse résolue)
-                if viewModel.isPinpointMode && !viewModel.pinpointAddress.isEmpty {
-                    pinpointConfirmationPanel
-                }
                 
                 // Options compactes
                 optionsSection
@@ -293,7 +363,7 @@ struct RideSearchView: View {
                     estimationSection
                 }
                 
-                // ✅ Suggestions (seulement en mode recherche)
+                // Suggestions (seulement en mode recherche)
                 if viewModel.showSuggestions &&
                    !viewModel.suggestions.isEmpty &&
                    !viewModel.isPinpointMode {
@@ -304,7 +374,7 @@ struct RideSearchView: View {
         }
     }
     
-    // MARK: - ✅ Sections spécialisées
+    // MARK: - Sections spécialisées
     private var gpsDisabledWarning: some View {
         HStack {
             Image(systemName: "location.slash")
@@ -328,7 +398,7 @@ struct RideSearchView: View {
     
     private var addressFieldsSection: some View {
         VStack(spacing: 8) {
-            // ✅ Champ pickup (toujours visible)
+            // Champ pickup (toujours visible)
             CentralizedLocationField(
                 text: Binding(
                     get: { viewModel.displayPickupAddress },
@@ -357,7 +427,7 @@ struct RideSearchView: View {
                 }
             )
             
-            // ✅ Champ destination (masqué en mode pinpoint)
+            // Champ destination (masqué en mode pinpoint)
             if !viewModel.isPinpointMode {
                 CentralizedLocationField(
                     text: $viewModel.destinationAddress,
@@ -395,60 +465,7 @@ struct RideSearchView: View {
         .padding(.vertical, 4)
     }
     
-    // ✅ NOUVEAU - Panneau de confirmation pinpoint intégré
-    private var pinpointConfirmationPanel: some View {
-        VStack(spacing: 12) {
-            // Adresse résolue
-            HStack(spacing: 8) {
-                if viewModel.isResolvingAddress {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: .red))
-                        .scaleEffect(0.8)
-                } else {
-                    Image(systemName: "mappin.circle.fill")
-                        .foregroundColor(.red)
-                        .font(.system(size: 16))
-                }
-                
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(viewModel.isResolvingAddress ? "Finding address..." : "Selected location")
-                        .font(.caption)
-                        .foregroundColor(.gray)
-                    
-                    Text(viewModel.pinpointAddress.isEmpty ? "Moving map..." : viewModel.pinpointAddress)
-                        .font(.footnote)
-                        .fontWeight(.medium)
-                        .foregroundColor(.black)
-                        .multilineTextAlignment(.leading)
-                }
-                
-                Spacer()
-            }
-            
-            // Bouton confirmer
-            Button(action: {
-                viewModel.confirmPinpointSelection()
-                // Remonter automatiquement le sheet en mode recherche
-                withAnimation(.easeInOut(duration: 0.5)) {
-                    bottomSheetHeight = 0.7
-                }
-            }) {
-                Text("Confirm location")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 44)
-                    .background(viewModel.isResolvingAddress ? Color.gray.opacity(0.3) : Color.red)
-                    .cornerRadius(8)
-            }
-            .disabled(viewModel.isResolvingAddress)
-        }
-        .padding(16)
-        .background(Color.gray.opacity(0.05))
-        .cornerRadius(12)
-        .padding(.horizontal, 20)
-    }
-    
+
     private var optionsSection: some View {
         HStack(spacing: 16) {
             // Passagers
@@ -592,19 +609,30 @@ struct RideSearchView: View {
     }
     
     // Observer changements position pour Mapbox
+    
     private func setupMapboxObserver() {
         viewModel.$annotations
-            .receive(on: DispatchQueue.main)
-            .sink { [self] annotations in
-                updateMapboxCenter(for: annotations)
+            .removeDuplicates()
+            .debounce(for: .milliseconds(200), scheduler: DispatchQueue.main)
+            .sink { annotations in
+                DispatchQueue.main.async {
+                    mapboxCenter = annotations.first?.coordinate ?? mapboxCenter
+                }
             }
             .store(in: &cancellables)
         
         locationService.$currentLocation
             .compactMap { $0 }
-            .receive(on: DispatchQueue.main)
-            .sink { [self] location in
-                mapboxCenter = location
+            .removeDuplicates { old, new in
+                let distance = CLLocation(latitude: old.latitude, longitude: old.longitude)
+                    .distance(from: CLLocation(latitude: new.latitude, longitude: new.longitude))
+                return distance < 20
+            }
+            .debounce(for: .seconds(1), scheduler: DispatchQueue.main)
+            .sink { location in
+                DispatchQueue.main.async {
+                    mapboxCenter = location
+                }
             }
             .store(in: &cancellables)
     }
@@ -612,17 +640,35 @@ struct RideSearchView: View {
     private func updateMapboxCenter(for annotations: [LocationAnnotation]) {
         guard !annotations.isEmpty else { return }
         
+        // Éviter updates pendant mode pinpoint
+        guard !viewModel.isPinpointMode else { return }
+        
         if annotations.count == 1 {
-            mapboxCenter = annotations[0].coordinate
+            let newCenter = annotations[0].coordinate
+            // Vérifier distance avant update
+            let currentDistance = CLLocation(latitude: mapboxCenter.latitude, longitude: mapboxCenter.longitude)
+                .distance(from: CLLocation(latitude: newCenter.latitude, longitude: newCenter.longitude))
+            
+            if currentDistance > 50 { // Minimum 50 mètres
+                mapboxCenter = newCenter
+            }
         } else if annotations.count >= 2 {
             let pickup = annotations.first { $0.type == .pickup }?.coordinate
             let destination = annotations.first { $0.type == .destination }?.coordinate
             
             if let pickup = pickup, let destination = destination {
-                mapboxCenter = CLLocationCoordinate2D(
+                let newCenter = CLLocationCoordinate2D(
                     latitude: (pickup.latitude + destination.latitude) / 2,
                     longitude: (pickup.longitude + destination.longitude) / 2
                 )
+                
+                // Vérifier distance avant update
+                let currentDistance = CLLocation(latitude: mapboxCenter.latitude, longitude: mapboxCenter.longitude)
+                    .distance(from: CLLocation(latitude: newCenter.latitude, longitude: newCenter.longitude))
+                
+                if currentDistance > 50 { // Minimum 50 mètres
+                    mapboxCenter = newCenter
+                }
             }
         }
     }

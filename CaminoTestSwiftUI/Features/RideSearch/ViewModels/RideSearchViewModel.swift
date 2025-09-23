@@ -34,7 +34,7 @@ class RideSearchViewModel: NSObject, ObservableObject {
     @Published var estimatedDistance = "0 km"
     @Published var availableDrivers: [Driver] = []
 
-    // MARK: - ✅ NOUVEAU - Mode Pinpoint
+    // MARK: - NOUVEAU - Mode Pinpoint
     @Published var isPinpointMode: Bool = false
     @Published var activeFieldForPinpoint: ActiveLocationField = .destination
     @Published var mapCenterCoordinate: CLLocationCoordinate2D?
@@ -99,7 +99,7 @@ class RideSearchViewModel: NSObject, ObservableObject {
         super.init()
     }
     
-    // MARK: - ✅ NOUVEAU - Méthodes mode pinpoint
+    // MARK: - NOUVEAU - Méthodes mode pinpoint
     func enablePinpointMode(for field: ActiveLocationField) {
         selectionMode = .pinpoint
         isPinpointMode = true
@@ -110,7 +110,7 @@ class RideSearchViewModel: NSObject, ObservableObject {
         suggestions = []
         searchTask?.cancel()
         
-        // ✅ CORRECTION: Initialiser le centre selon le champ et les coordonnées existantes
+        // Initialiser le centre selon le champ et les coordonnées existantes
         var initialCenter: CLLocationCoordinate2D?
         
         switch field {
@@ -146,7 +146,7 @@ class RideSearchViewModel: NSObject, ObservableObject {
             onMapCenterChanged(coordinate: center)
         }
     }
-    
+
     func disablePinpointMode() {
         selectionMode = .search
         isPinpointMode = false
@@ -159,13 +159,23 @@ class RideSearchViewModel: NSObject, ObservableObject {
         // Retour au focus destination par défaut
         activeField = .destination
     }
-    
+
+    private var isUpdatingFromMap: Bool = false
+
     func onMapCenterChanged(coordinate: CLLocationCoordinate2D) {
         guard isPinpointMode else { return }
+        guard !isUpdatingFromMap else { return } // Éviter boucles
         
         mapCenterCoordinate = coordinate
         
-        // ✅ CORRECTION: Mettre à jour immédiatement les coordonnées du champ concerné
+        // Mettre à jour coordonnées avec flag protection
+        isUpdatingFromMap = true
+        defer {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                self.isUpdatingFromMap = false
+            }
+        }
+        
         switch activeFieldForPinpoint {
         case .destination:
             destinationCoordinate = coordinate
@@ -181,10 +191,10 @@ class RideSearchViewModel: NSObject, ObservableObject {
             break
         }
         
-        // Annuler la résolution précédente
+        // Annuler résolution précédente
         resolveTask?.cancel()
         
-        // Valider la coordonnée
+        // Validation coordonnée
         guard isValidCoordinate(coordinate) else {
             pinpointAddress = translations["invalidLocation"] ?? "Invalid location"
             isResolvingAddress = false
@@ -193,11 +203,10 @@ class RideSearchViewModel: NSObject, ObservableObject {
         
         isResolvingAddress = true
         
-        // Géocodage inverse avec debounce
+        // Debounce plus long pour réduire charge
         resolveTask = Task { [weak self] in
             do {
-                // Debounce de 500ms
-                try await Task.sleep(for: .milliseconds(500))
+                try await Task.sleep(for: .milliseconds(500)) // Augmenté à 500ms
                 
                 guard !Task.isCancelled else { return }
                 
@@ -208,6 +217,7 @@ class RideSearchViewModel: NSObject, ObservableObject {
         }
     }
     
+    // MODIFIÉ - Auto-update de l'adresse destination en temps réel
     private func performReverseGeocode(coordinate: CLLocationCoordinate2D) async {
         guard let locationService = locationService else {
             await updatePinpointAddress("Location service unavailable")
@@ -215,8 +225,15 @@ class RideSearchViewModel: NSObject, ObservableObject {
         }
         
         do {
+            // Utilisation de MapKit pour le géocodage inverse (logique métier)
             let address = try await locationService.reverseGeocode(coordinate)
-            await updatePinpointAddress(address.isEmpty ? "Unknown location" : address)
+            let finalAddress = address.isEmpty ? "Unknown location" : address
+            
+            await updatePinpointAddress(finalAddress)
+            
+            // Auto-update immédiat du champ destination
+            await autoUpdateDestinationField(finalAddress)
+            
         } catch {
             let errorMessage = if let locationError = error as? LocationError {
                 locationError.localizedDescription(language: currentLanguage)
@@ -226,25 +243,38 @@ class RideSearchViewModel: NSObject, ObservableObject {
             await updatePinpointAddress(errorMessage)
         }
     }
-    
-    private func updatePinpointAddress(_ address: String) async {
+
+    // Méthode d'auto-update du champ destination
+    private func autoUpdateDestinationField(_ address: String) async {
+        guard !isUpdatingFromMap else { return } // Éviter boucles
+        
         await MainActor.run { [weak self] in
             guard let self = self else { return }
             
-            self.pinpointAddress = address
-            self.isResolvingAddress = false
-            
-            // ✅ CORRECTION: Mettre à jour automatiquement l'adresse du champ concerné
             switch self.activeFieldForPinpoint {
             case .destination:
-                self.destinationAddress = address
-                // Pas besoin de mettre à jour les coordonnées ici, elles sont déjà dans mapCenterCoordinate
+                // Vérifier si address vraiment différente
+                if self.destinationAddress != address {
+                    self.destinationAddress = address
+                    
+                    // Déclencher route calculation avec debounce
+                    if self.pickupCoordinate != nil {
+                        self.scheduleRouteCalculation()
+                    }
+                }
                 
             case .pickup:
                 if self.useCustomPickup {
-                    self.customPickupAddress = address
-                    self.pickupAddress = address
-                    self.isPickupFromGPS = false
+                    if self.customPickupAddress != address {
+                        self.customPickupAddress = address
+                        self.pickupAddress = address
+                        self.isPickupFromGPS = false
+                        
+                        // Déclencher route calculation avec debounce
+                        if self.destinationCoordinate != nil {
+                            self.scheduleRouteCalculation()
+                        }
+                    }
                 }
                 
             case .none:
@@ -253,25 +283,30 @@ class RideSearchViewModel: NSObject, ObservableObject {
         }
     }
     
-    func confirmPinpointSelection() {
-        guard isPinpointMode,
-              let coordinate = mapCenterCoordinate,
-              isValidCoordinate(coordinate),
-              !pinpointAddress.isEmpty else {
-            return
+    private func updatePinpointAddress(_ address: String) async {
+        await MainActor.run { [weak self] in
+            guard let self = self else { return }
+            
+            self.pinpointAddress = address
+            self.isResolvingAddress = false
         }
+    }
+    
+    
+    private var routeCalculationTask: Task<Void, Never>?
+
+    private func scheduleRouteCalculation() {
+        routeCalculationTask?.cancel()
         
-        // ✅ CORRECTION SIMPLIFIÉE: Les coordonnées et adresses sont déjà mises à jour en temps réel
-        // Il suffit de déclencher le calcul de route si nécessaire
-        if activeFieldForPinpoint == .destination && pickupCoordinate != nil {
-            Task { await calculateRoute() }
-        } else if activeFieldForPinpoint == .pickup && destinationCoordinate != nil {
-            Task { await calculateRoute() }
+        routeCalculationTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .milliseconds(1000)) // 1 seconde de debounce
+                guard !Task.isCancelled else { return }
+                await self?.calculateRoute()
+            } catch {
+                // Task annulé
+            }
         }
-        
-        // Revenir au mode recherche
-        disablePinpointMode()
-        clearErrors()
     }
     
     // MARK: - Computed Properties modifiées
@@ -308,6 +343,8 @@ class RideSearchViewModel: NSObject, ObservableObject {
     
     // MARK: - Gestion pickup GPS automatique (existant - inchangé)
     private func handleGPSLocationUpdate(_ location: CLLocationCoordinate2D?) {
+        guard !isUpdatingFromMap else { return } // Éviter conflicts avec pinpoint
+        
         showUserLocation = (location != nil)
         
         guard let location = location,
@@ -320,6 +357,7 @@ class RideSearchViewModel: NSObject, ObservableObject {
             updateGPSPickup(location)
         }
     }
+
     
     private func updateGPSPickup(_ coordinate: CLLocationCoordinate2D) {
         pickupCoordinate = coordinate
@@ -667,7 +705,6 @@ class RideSearchViewModel: NSObject, ObservableObject {
                 "tapToCustomize": "Appui long pour modifier",
                 "usingGpsLocation": "Position GPS utilisée",
                 "customPickupEnabled": "Départ personnalisé activé",
-                // ✅ NOUVEAU - Traductions pinpoint
                 "searchMode": "Recherche",
                 "pinpointMode": "Sur la carte",
                 "selectOnMap": "Choisir sur la carte",
@@ -708,7 +745,6 @@ class RideSearchViewModel: NSObject, ObservableObject {
                 "tapToCustomize": "Long press to customize",
                 "usingGpsLocation": "Using GPS location",
                 "customPickupEnabled": "Custom pickup enabled",
-                // ✅ NOUVEAU - Traductions pinpoint
                 "searchMode": "Search",
                 "pinpointMode": "On map",
                 "selectOnMap": "Select on map",

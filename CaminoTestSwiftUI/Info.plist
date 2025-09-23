@@ -4,9 +4,5 @@
 <dict>
 	<key>MBXAccessToken</key>
 	<string>pk.eyJ1IjoiaXNzYW1lbGFqcmFvdWkiLCJhIjoiY21mc25qcm9mMG9iczJtcHV5MGc3eHk4ZSJ9.LjRgJ9sgs2LyMBUAUxhWrg</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>This app uses your location to find nearby drivers.</string>
-	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>This app uses your location to find nearby drivers.</string>
 </dict>
 </plist>

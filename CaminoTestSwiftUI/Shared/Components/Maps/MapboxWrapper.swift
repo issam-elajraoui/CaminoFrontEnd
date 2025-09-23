@@ -61,65 +61,69 @@ public struct MapboxWrapper: UIViewRepresentable {
     }
     
     // MARK: - Création Mapbox corrigée
-    // MARK: - Création Mapbox corrigée
-        private func createMapboxView(context: Context) -> MapView {
-            let validCenter = MapboxConfig.isValidCanadianCoordinate(center) ? center : MapboxConfig.fallbackRegion
+    private func createMapboxView(context: Context) -> MapView {
+        let validCenter = MapboxConfig.isValidCanadianCoordinate(center) ? center : MapboxConfig.fallbackRegion
+        
+        let mapInitOptions = MapInitOptions(
+            cameraOptions: CameraOptions(
+                center: validCenter,
+                zoom: MapboxConfig.sanitizeZoom(MapboxConfig.defaultZoom)
+            ),
+            styleURI: StyleURI(rawValue: MapboxConfig.styleURL)
+        )
+        
+        let mapView = MapView(frame: .zero, mapInitOptions: mapInitOptions)
+        
+        setupCanadianTheme(mapView)
+        
+        // CORRECTION - Throttling pour éviter updates multiples par frame
+        var _: Date = Date()
+        let updateThreshold: TimeInterval = 0.1 // 100ms minimum entre updates
+        
+        mapView.mapboxMap.onCameraChanged.observeNext { _ in
             
-            let mapInitOptions = MapInitOptions(
-                cameraOptions: CameraOptions(
-                    center: validCenter,
-                    zoom: MapboxConfig.sanitizeZoom(MapboxConfig.defaultZoom)
-                ),
-                styleURI: StyleURI(rawValue: MapboxConfig.styleURL)
-            )
+            let currentCenter = mapView.mapboxMap.cameraState.center
             
-            let mapView = MapView(frame: .zero, mapInitOptions: mapInitOptions)
-            
-            setupCanadianTheme(mapView)
-            
-            // ✅ CORRECTION: Observer les changements de caméra pour mettre à jour le binding center
-            mapView.mapboxMap.onCameraChanged.observeNext { [weak mapView] _ in
-                guard let mapView = mapView else { return }
-                
-                // Obtenir le centre actuel de la caméra
-                let currentCenter = mapView.cameraState.center
-                
-                // ✅ CORRECTION: Mettre à jour le binding center sur le main thread
-                DispatchQueue.main.async {
-                    // Éviter les boucles infinies en vérifiant si le centre a vraiment changé
-                    let distanceThreshold = 0.0001 // Environ 10 mètres
-                    let latDiff = abs(currentCenter.latitude - self.center.latitude)
-                    let lonDiff = abs(currentCenter.longitude - self.center.longitude)
-                    
-                    if latDiff > distanceThreshold || lonDiff > distanceThreshold {
-                        print("🐛 DEBUG MapboxWrapper - Camera center changed to: \(currentCenter)")
-                        self.center = currentCenter
-                    }
-                }
-            }.store(in: &cancellables)
-            
-            // CORRECTION: Gestion événement map loaded avec DispatchQueue
-            mapView.mapboxMap.onMapLoaded.observeNext { [weak mapView] _ in
-                guard let mapView = mapView else { return }
-                DispatchQueue.main.async {
-                    // Éviter modification état pendant view update
-                    Task { @MainActor in
-                        self.mapView = mapView
-                        self.updateAnnotations(mapView)
-                        self.updateRoute(mapView)
-                    }
-                }
-            }.store(in: &cancellables)
-            
-            let tapGesture = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleMapTap(_:)))
-            mapView.addGestureRecognizer(tapGesture)
-            
-            // CORRECTION: Éviter modification état dans createMapboxView
-            DispatchQueue.main.async {
-                self.isMapboxAvailable = true
+            guard MapboxConfig.isValidCanadianCoordinate(currentCenter) else {
+                return
             }
-            return mapView
+            
+            DispatchQueue.main.async {
+                let distanceThreshold = 0.0001
+                let latDiff = abs(currentCenter.latitude - self.center.latitude)
+                let lonDiff = abs(currentCenter.longitude - self.center.longitude)
+                
+                if latDiff > distanceThreshold || lonDiff > distanceThreshold {
+                    self.center = currentCenter // Direct assignment sans weak
+                }
+            }
+        }.store(in: &cancellables)
+        
+        // Configuration événement map loaded
+        mapView.mapboxMap.onMapLoaded.observeNext { [weak mapView] _ in
+            guard let mapView = mapView else { return }
+            DispatchQueue.main.async {
+                Task { @MainActor in
+                    self.mapView = mapView
+                    self.updateAnnotations(mapView)
+                    self.updateRoute(mapView)
+                }
+            }
+        }.store(in: &cancellables)
+        
+        // CORRECTION - Gesture plus robuste
+        let tapGesture = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleMapTap(_:)))
+        tapGesture.numberOfTapsRequired = 1
+        tapGesture.delegate = context.coordinator
+        mapView.addGestureRecognizer(tapGesture)
+        
+        DispatchQueue.main.async {
+            self.isMapboxAvailable = true
         }
+        return mapView
+    }
+
+    
     @State private var cancellables = Set<AnyCancellable>()
     
     // MARK: - Mode dégradé (inchangé)
@@ -151,24 +155,40 @@ public struct MapboxWrapper: UIViewRepresentable {
         return fallbackView
     }
     
+    @State private var isUpdatingCenter: Bool = false
+
     // MARK: - Mise à jour Mapbox corrigée
     private func updateMapboxView(_ mapView: MapView, context: Context) {
+        guard !isUpdatingCenter else { return } // Éviter updates pendant sync
+        
         let validCenter = MapboxConfig.isValidCanadianCoordinate(center) ? center : MapboxConfig.fallbackRegion
+        
+        // Vérifier si vraiment besoin d'update
+        let currentCenter = mapView.mapboxMap.cameraState.center
+        let distanceThreshold = 0.001 // Plus conservateur
+        let latDiff = abs(validCenter.latitude - currentCenter.latitude)
+        let lonDiff = abs(validCenter.longitude - currentCenter.longitude)
+        
+        guard latDiff > distanceThreshold || lonDiff > distanceThreshold else {
+            return // Pas besoin d'update
+        }
         
         let cameraOptions = CameraOptions(
             center: validCenter,
             zoom: MapboxConfig.sanitizeZoom(MapboxConfig.defaultZoom)
         )
         
+        // Animation plus courte pour réduire lag
         mapView.camera.ease(
             to: cameraOptions,
-            duration: MapboxConfig.animationDuration
+            duration: 0.2
         )
         
         updateAnnotations(mapView)
         updateRoute(mapView)
         updateUserLocation(mapView)
     }
+    
     
     private func setupCanadianTheme(_ mapView: MapView) {
         mapView.ornaments.attributionButton.isHidden = true
@@ -189,7 +209,7 @@ public struct MapboxWrapper: UIViewRepresentable {
         
         for annotation in annotations {
             guard MapboxConfig.isValidCanadianCoordinate(annotation.coordinate) else {
-                print("⚠️ Coordonnée invalide ignorée: \(annotation.coordinate)")
+                print(" Coordonnée invalide ignorée: \(annotation.coordinate)")
                 continue
             }
             
@@ -232,7 +252,7 @@ public struct MapboxWrapper: UIViewRepresentable {
         }
         
         guard validCoordinates.count >= 2 else {
-            print("⚠️ Route invalide - pas assez de coordonnées valides")
+            print("Route invalide - pas assez de coordonnées valides")
             return
         }
         
@@ -255,7 +275,7 @@ public struct MapboxWrapper: UIViewRepresentable {
             try mapView.mapboxMap.addSource(geoJSONSource)
             try mapView.mapboxMap.addLayer(lineLayer)
         } catch {
-            print("⚠️ Erreur ajout route: \(error.localizedDescription)")
+            print("Erreur ajout route: \(error.localizedDescription)")
         }
     }
     
@@ -280,9 +300,9 @@ public struct MapboxWrapper: UIViewRepresentable {
     }
 }
 
-// MARK: - CORRECTION: Coordinator ultra-simplifié
+// MARK: - Coordinator ultra-simplifié
 extension MapboxWrapper {
-    public class Coordinator: NSObject {
+    public class Coordinator: NSObject, UIGestureRecognizerDelegate {
         var parent: MapboxWrapper
         
         init(_ parent: MapboxWrapper) {
@@ -293,14 +313,28 @@ extension MapboxWrapper {
             guard let mapView = gesture.view as? MapView else { return }
             
             let point = gesture.location(in: mapView)
-            let coordinate = mapView.mapboxMap.coordinate(for: point)
             
-            guard MapboxConfig.isValidCanadianCoordinate(coordinate) else {
-                print("⚠️ Tap hors zone de service ignoré")
+            // CORRECTION - Validation du point avant conversion
+            guard point.x > 0 && point.y > 0 else {
+                print("Invalid tap point: \(point)")
                 return
             }
             
+            let coordinate = mapView.mapboxMap.coordinate(for: point)
+            
+            // Validation coordonnées
+            guard MapboxConfig.isValidCanadianCoordinate(coordinate) else {
+                print("⚠️ Tap outside service area: \(coordinate)")
+                return
+            }
+            
+            print("Valid map tap at: \(coordinate)")
             parent.onMapTap(coordinate)
+        }
+        
+        // NOUVEAU - Delegate pour éviter conflits gesture
+        public func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+            return false // Éviter conflits avec pan/zoom
         }
     }
 }
