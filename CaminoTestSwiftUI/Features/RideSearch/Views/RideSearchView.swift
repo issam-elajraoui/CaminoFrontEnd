@@ -10,8 +10,10 @@ struct RideSearchView: View {
     @StateObject private var locationService = LocationService()
     @Environment(\.presentationMode) var presentationMode
     
+    
     // États pour coordonnées Mapbox
     @State private var mapboxCenter: CLLocationCoordinate2D = CLLocationCoordinate2D(latitude: 45.4215, longitude: -75.6972)
+    
     @State private var cancellables = Set<AnyCancellable>()
     
     // États bottom sheet
@@ -86,8 +88,20 @@ struct RideSearchView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             viewModel.recheckLocationPermissions()
         }
+        
+        .onDisappear {
+                    viewModel.cleanupPinpointTasks()
+                }
+        
+        // 3. AJOUTER dans onDisappear
+        .onDisappear {
+            viewModel.cleanupPinpointTasks()
+        }
+        
         // NOUVEAU - Observer les changements de position du sheet
         .onChange(of: bottomSheetHeight) { oldValue, newValue in
+            print("🔵 Sheet height changed: \(oldValue) → \(newValue)")
+            print("🔵 pinpointModeThreshold: \(pinpointModeThreshold)")
             // Éviter updates trop fréquents
             guard abs(newValue - oldValue) > 0.05 else { return }
             
@@ -125,6 +139,7 @@ struct RideSearchView: View {
                 }
             }
         }
+        
     }
     
     // MARK: - Gestion automatique du changement de mode
@@ -144,47 +159,40 @@ struct RideSearchView: View {
 //    }
 
     private func activatePinpointMode() {
+        print("🟢 RideSearchView: Activating pinpoint mode")
         withAnimation(.easeInOut(duration: 0.3)) {
-            // Toujours activer pour le champ destination
             viewModel.enablePinpointMode(for: .destination)
         }
+        print("🟢 RideSearchView: Pinpoint mode activated, isPinpointMode = \(viewModel.isPinpointMode)")
     }
-
+    
     private func deactivatePinpointMode() {
+        print("🔴 RideSearchView: Deactivating pinpoint mode")
         withAnimation(.easeInOut(duration: 0.3)) {
             viewModel.disablePinpointMode()
         }
+        print("🔴 RideSearchView: Pinpoint mode deactivated")
     }
     
     // MARK: - Carte Mapbox plein écran
     private var mapboxFullScreenSection: some View {
         ZStack {
-            // Carte Mapbox
+            // Carte Mapbox avec binding pour le mode pinpoint
             MapboxWrapper(
                 center: $mapboxCenter,
                 annotations: $viewModel.annotations,
                 route: $viewModel.currentRoute,
                 showUserLocation: $viewModel.showUserLocation,
+                isPinpointMode: $viewModel.isPinpointMode,
                 onMapTap: { coordinate in
                     viewModel.handleMapTap(at: CGPoint(x: 0, y: 0))
+                },
+                onPinpointMove: { coordinate in  // NOUVEAU callback
+                    viewModel.onMapCenterChangedSimple(coordinate: coordinate)
                 }
             )
-            .onChange(of: mapboxCenter) { oldValue, newValue in
-                // Éviter updates trop fréquents
-                let distance = CLLocation(latitude: oldValue.latitude, longitude: oldValue.longitude)
-                    .distance(from: CLLocation(latitude: newValue.latitude, longitude: newValue.longitude))
-                
-                guard distance > 10 else { return } // Minimum 10 mètres
-                
-                // Update avec debounce
-                Task { @MainActor in
-                    if viewModel.isPinpointMode {
-                        viewModel.onMapCenterChanged(coordinate: newValue)
-                    }
-                }
-            }
             
-            // Pinpoint fixe au centre (visible seulement en mode pinpoint)
+            // Reste du code identique
             PinpointIndicator(
                 isActive: viewModel.isPinpointMode,
                 isResolving: viewModel.isResolvingAddress
@@ -206,11 +214,11 @@ struct RideSearchView: View {
     // MARK: - Instructions pinpoint simplifiées
     private func pinpointInstructions(geometry: GeometryProxy) -> some View {
         VStack {
-            // Instructions en haut avec adresse temps réel
-            VStack(spacing: 8) {
+            VStack(spacing: 12) {
+                // Instructions simples
                 HStack {
                     Spacer()
-                    Text(viewModel.translations["dragMapToChoose"] ?? "Drag map to choose location")
+                    Text("Déplacez la carte pour choisir votre destination")
                         .font(.subheadline)
                         .fontWeight(.medium)
                         .foregroundColor(.white)
@@ -222,8 +230,8 @@ struct RideSearchView: View {
                     Spacer()
                 }
                 
-                // MARK: - Affichage adresse en temps réel
-                if !viewModel.pinpointAddress.isEmpty || viewModel.isResolvingAddress {
+                // Affichage adresse en temps réel
+                if viewModel.isResolvingAddress || !viewModel.pinpointAddress.isEmpty {
                     HStack {
                         Spacer()
                         HStack(spacing: 8) {
@@ -231,16 +239,19 @@ struct RideSearchView: View {
                                 ProgressView()
                                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
                                     .scaleEffect(0.7)
+                                Text("Recherche...")
+                                    .font(.footnote)
+                                    .foregroundColor(.white)
+                            } else {
+                                Text("📍")
+                                    .font(.footnote)
+                                Text(viewModel.pinpointAddress)
+                                    .font(.footnote)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.white)
+                                    .multilineTextAlignment(.center)
+                                    .lineLimit(2)
                             }
-                            
-                            Text(viewModel.isResolvingAddress ?
-                                 (viewModel.translations["resolvingAddress"] ?? "Finding address...") :
-                                 viewModel.pinpointAddress)
-                                .font(.footnote)
-                                .fontWeight(.medium)
-                                .foregroundColor(.white)
-                                .multilineTextAlignment(.center)
-                                .lineLimit(2)
                         }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
@@ -257,7 +268,8 @@ struct RideSearchView: View {
         }
         .transition(.opacity)
     }
-    
+
+
     // MARK: - Bouton GPS
     private var gpsLocationButton: some View {
         Button(action: {

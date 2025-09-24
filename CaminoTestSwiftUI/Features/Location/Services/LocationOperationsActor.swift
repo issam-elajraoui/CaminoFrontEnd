@@ -113,30 +113,88 @@ actor LocationOperationsActor {
         }
     }
     
+//    private func performReverseGeocodingOperation(
+//        location: CLLocation
+//    ) async throws -> String {
+//        
+//        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, Error>) in
+//            geocoder.reverseGeocodeLocation(location) { placemarks, error in
+//                if error != nil {
+//                    continuation.resume(throwing: LocationError.geocodingFailed)
+//                    return
+//                }
+//                
+//                guard let placemark = placemarks?.first else {
+//                    continuation.resume(throwing: LocationError.geocodingFailed)
+//                    return
+//                }
+//                
+////                Task { @MainActor in
+////                                let address = await self.formatAddress(from: placemark)
+////                                continuation.resume(returning: address)
+////                            }
+//                let address = Self.formatAddressStatic(from: placemark)
+//                continuation.resume(returning: address)
+//            }
+//        }
+//    }
+//
     private func performReverseGeocodingOperation(
         location: CLLocation
     ) async throws -> String {
         
+        print("🔍 Starting reverse geocoding for: \(location.coordinate)")
+        
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, Error>) in
+            print("📍 Geocoder callback started")
             geocoder.reverseGeocodeLocation(location) { placemarks, error in
-                if error != nil {
+                print("📋 Geocoder returned - Error: \(String(describing: error)), Placemarks count: \(placemarks?.count ?? 0)")
+                // S'assurer que la continuation n'est reprise qu'une seule fois
+                if let error = error {
+                    print("❌ Error detected, resuming with error: \(error.localizedDescription)")
                     continuation.resume(throwing: LocationError.geocodingFailed)
                     return
                 }
                 
                 guard let placemark = placemarks?.first else {
+                    print("❌ No placemark found, resuming with error")
                     continuation.resume(throwing: LocationError.geocodingFailed)
                     return
                 }
                 
-                Task { @MainActor in
-                                let address = await self.formatAddress(from: placemark)
-                                continuation.resume(returning: address)
-                            }
+                print("✅ Placemark found, formatting address...")
+                
+                // Version inline sécurisée du formatage d'adresse
+                do {
+                    var addressComponents: [String] = []
+                    
+                    if let streetNumber = placemark.subThoroughfare {
+                        addressComponents.append(streetNumber)
+                    }
+                    
+                    if let streetName = placemark.thoroughfare {
+                        addressComponents.append(streetName)
+                    }
+                    
+                    if let city = placemark.locality {
+                        addressComponents.append(city)
+                    }
+                    
+                    let address = addressComponents.isEmpty ?
+                        "Adresse inconnue" :
+                        addressComponents.joined(separator: " ")
+                    
+                    print("✅ Address formatted: '\(address)', resuming with success")
+                    continuation.resume(returning: address)
+                    
+                } catch {
+                    print("❌ Exception during formatting, resuming with error: \(error.localizedDescription)")
+                    continuation.resume(throwing: LocationError.geocodingFailed)
+                }
             }
+            print("🏁 Geocoder callback setup completed")
         }
     }
-    
     
     
     // MARK: - Utilitaires thread-safe

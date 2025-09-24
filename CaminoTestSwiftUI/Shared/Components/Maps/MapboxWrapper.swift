@@ -21,13 +21,22 @@ public struct MapboxWrapper: UIViewRepresentable {
     @Binding var route: RouteResult?
     @Binding var showUserLocation: Bool
     
+    @Binding var isPinpointMode: Bool
+    
+    
+    // MARK: Timer et État PinPoint
+    @State private var mapTimer: Timer?
+    
     // MARK: - Propriétés de callback
     let onMapTap: (CLLocationCoordinate2D) -> Void
     let onAnnotationTap: (LocationAnnotation) -> Void
+    let onPinpointMove: (CLLocationCoordinate2D) -> Void
+
     
     // MARK: - État interne
     @State private var isMapboxAvailable = false
     @State private var mapView: MapView?
+
     
     // MARK: - Initialisation
     init(
@@ -35,14 +44,18 @@ public struct MapboxWrapper: UIViewRepresentable {
         annotations: Binding<[LocationAnnotation]>,
         route: Binding<RouteResult?>,
         showUserLocation: Binding<Bool>,
+        isPinpointMode: Binding<Bool>,
         onMapTap: @escaping (CLLocationCoordinate2D) -> Void = { _ in },
+        onPinpointMove: @escaping (CLLocationCoordinate2D) -> Void = { _ in },  // NOUVEAU
         onAnnotationTap: @escaping (LocationAnnotation) -> Void = { _ in }
     ) {
         self._center = center
         self._annotations = annotations
         self._route = route
         self._showUserLocation = showUserLocation
+        self._isPinpointMode = isPinpointMode
         self.onMapTap = onMapTap
+        self.onPinpointMove = onPinpointMove  // NOUVEAU
         self.onAnnotationTap = onAnnotationTap
     }
     
@@ -76,53 +89,39 @@ public struct MapboxWrapper: UIViewRepresentable {
         
         setupCanadianTheme(mapView)
         
-        // CORRECTION - Throttling pour éviter updates multiples par frame
-        var _: Date = Date()
-        let updateThreshold: TimeInterval = 0.1 // 100ms minimum entre updates
-        
-        mapView.mapboxMap.onCameraChanged.observeNext { _ in
-            
-            let currentCenter = mapView.mapboxMap.cameraState.center
-            
-            guard MapboxConfig.isValidCanadianCoordinate(currentCenter) else {
-                return
-            }
-            
-            DispatchQueue.main.async {
-                let distanceThreshold = 0.0001
-                let latDiff = abs(currentCenter.latitude - self.center.latitude)
-                let lonDiff = abs(currentCenter.longitude - self.center.longitude)
-                
-                if latDiff > distanceThreshold || lonDiff > distanceThreshold {
-                    self.center = currentCenter // Direct assignment sans weak
-                }
-            }
-        }.store(in: &cancellables)
+        // SIMPLE - Pas d'auto-sync, seulement réaction aux gestures
+        print("🟦 MapboxWrapper: Created map, isPinpointMode = \(isPinpointMode)")
         
         // Configuration événement map loaded
         mapView.mapboxMap.onMapLoaded.observeNext { [weak mapView] _ in
             guard let mapView = mapView else { return }
-            DispatchQueue.main.async {
-                Task { @MainActor in
-                    self.mapView = mapView
-                    self.updateAnnotations(mapView)
-                    self.updateRoute(mapView)
-                }
+            Task { @MainActor in
+                self.mapView = mapView
+                self.updateAnnotations(mapView)
+                self.updateRoute(mapView)
+                print("🟦 MapboxWrapper: Map loaded")
             }
         }.store(in: &cancellables)
         
-        // CORRECTION - Gesture plus robuste
+        // Gesture pour détecter les mouvements en mode pinpoint
+        let panGesture = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleMapPan(_:)))
+        panGesture.delegate = context.coordinator
+        mapView.addGestureRecognizer(panGesture)
+        
+        // Tap gesture existant
         let tapGesture = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleMapTap(_:)))
         tapGesture.numberOfTapsRequired = 1
         tapGesture.delegate = context.coordinator
         mapView.addGestureRecognizer(tapGesture)
         
-        DispatchQueue.main.async {
-            self.isMapboxAvailable = true
-        }
         return mapView
     }
-
+    
+    // MARK: cleanup du timer
+    private func cleanup() {
+        mapTimer?.invalidate()
+        mapTimer = nil
+    }
     
     @State private var cancellables = Set<AnyCancellable>()
     
@@ -331,12 +330,35 @@ extension MapboxWrapper {
             print("Valid map tap at: \(coordinate)")
             parent.onMapTap(coordinate)
         }
-        
+        @objc func handleMapPan(_ gesture: UIPanGestureRecognizer) {
+            guard let mapView = gesture.view as? MapView else { return }
+            
+            // Seulement si en mode pinpoint ET gesture terminée
+            guard parent.isPinpointMode && gesture.state == .ended else { return }
+            
+            print("🟦 Coordinator: Map pan ended in pinpoint mode")
+            
+            // Attendre un peu que la carte se stabilise
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                let currentCenter = mapView.mapboxMap.cameraState.center
+                
+                guard MapboxConfig.isValidCanadianCoordinate(currentCenter) else {
+                    print("🟦 Coordinator: Invalid coordinate after pan: \(currentCenter)")
+                    return
+                }
+                
+                print("🟦 Coordinator: Pan ended at \(currentCenter)")
+                
+                // CORRECTION - Appeler le callback pinpoint au lieu du tap
+                self.parent.onPinpointMove(currentCenter)
+            }
+        }
         // NOUVEAU - Delegate pour éviter conflits gesture
         public func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
             return false // Éviter conflits avec pan/zoom
         }
     }
+    
 }
 
 // MARK: - Extension MKPolyline pour coordonnées (inchangée)

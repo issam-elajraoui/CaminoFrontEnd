@@ -77,6 +77,9 @@ class RideSearchViewModel: NSObject, ObservableObject {
     private var searchTask: Task<Void, Never>?
     private var resolveTask: Task<Void, Never>? // Pour le géocodage inverse pinpoint
     
+    // Debug
+    private var gpsReverseTask: Task<Void, Never>?
+    
     private lazy var searchCompleter: MKLocalSearchCompleter = {
         let completer = MKLocalSearchCompleter()
         completer.delegate = self
@@ -101,9 +104,12 @@ class RideSearchViewModel: NSObject, ObservableObject {
     
     // MARK: - NOUVEAU - Méthodes mode pinpoint
     func enablePinpointMode(for field: ActiveLocationField) {
+        print("🟢 ViewModel: enablePinpointMode called for field: \(field)")
         selectionMode = .pinpoint
         isPinpointMode = true
         activeFieldForPinpoint = field
+        print("🟢 ViewModel: isPinpointMode set to \(isPinpointMode)")
+
         
         // Fermer les suggestions du mode recherche
         showSuggestions = false
@@ -162,9 +168,67 @@ class RideSearchViewModel: NSObject, ObservableObject {
 
     private var isUpdatingFromMap: Bool = false
 
+//    func onMapCenterChanged(coordinate: CLLocationCoordinate2D) {
+//        guard isPinpointMode else { return }
+//        guard !isUpdatingFromMap else { return } // Éviter boucles
+//        
+//        mapCenterCoordinate = coordinate
+//        
+//        // Mettre à jour coordonnées avec flag protection
+//        isUpdatingFromMap = true
+//        defer {
+//            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+//                self.isUpdatingFromMap = false
+//            }
+//        }
+//        
+//        switch activeFieldForPinpoint {
+//        case .destination:
+//            destinationCoordinate = coordinate
+//            updateMapAnnotations()
+//            
+//        case .pickup:
+//            if useCustomPickup {
+//                pickupCoordinate = coordinate
+//                updateMapAnnotations()
+//            }
+//            
+//        case .none:
+//            break
+//        }
+//        
+//        // Annuler résolution précédente
+//        resolveTask?.cancel()
+//        
+//        // Validation coordonnée
+//        guard isValidCoordinate(coordinate) else {
+//            pinpointAddress = translations["invalidLocation"] ?? "Invalid location"
+//            isResolvingAddress = false
+//            return
+//        }
+//        
+//        isResolvingAddress = true
+//        
+//        // Debounce plus long pour réduire charge
+//        resolveTask = Task { [weak self] in
+//            do {
+//                try await Task.sleep(for: .milliseconds(500)) // Augmenté à 500ms
+//                
+//                guard !Task.isCancelled else { return }
+//                
+//                await self?.performReverseGeocode(coordinate: coordinate)
+//            } catch {
+//                // Task annulé, ne rien faire
+//            }
+//        }
+//    }
+//
+    
     func onMapCenterChanged(coordinate: CLLocationCoordinate2D) {
         guard isPinpointMode else { return }
-        guard !isUpdatingFromMap else { return } // Éviter boucles
+        guard !isUpdatingFromMap else { return }
+        
+        print("🗺️ Map center changed to: \(coordinate)")
         
         mapCenterCoordinate = coordinate
         
@@ -191,8 +255,11 @@ class RideSearchViewModel: NSObject, ObservableObject {
             break
         }
         
-        // Annuler résolution précédente
-        resolveTask?.cancel()
+        // CORRECTION: Annuler VRAIMENT la tâche précédente
+        if let currentTask = resolveTask {
+            print("🚫 Cancelling previous resolve task")
+            currentTask.cancel()
+        }
         
         // Validation coordonnée
         guard isValidCoordinate(coordinate) else {
@@ -203,19 +270,30 @@ class RideSearchViewModel: NSObject, ObservableObject {
         
         isResolvingAddress = true
         
-        // Debounce plus long pour réduire charge
-        resolveTask = Task { [weak self] in
+        // CORRECTION: Debounce plus robuste avec UUID de tâche
+        let taskId = UUID()
+        print("🆔 Starting new resolve task: \(taskId)")
+        
+        resolveTask = Task { [weak self, taskId] in
             do {
-                try await Task.sleep(for: .milliseconds(500)) // Augmenté à 500ms
+                try await Task.sleep(for: .milliseconds(800)) // Augmenté à 800ms
                 
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled else {
+                    print("🚫 Task cancelled: \(taskId)")
+                    return
+                }
                 
+                print("🚀 Executing resolve task: \(taskId)")
                 await self?.performReverseGeocode(coordinate: coordinate)
+                
             } catch {
-                // Task annulé, ne rien faire
+                print("❌ Task error: \(taskId) - \(error)")
             }
         }
     }
+    
+    
+    
     
     // MODIFIÉ - Auto-update de l'adresse destination en temps réel
     private func performReverseGeocode(coordinate: CLLocationCoordinate2D) async {
@@ -343,6 +421,7 @@ class RideSearchViewModel: NSObject, ObservableObject {
     
     // MARK: - Gestion pickup GPS automatique (existant - inchangé)
     private func handleGPSLocationUpdate(_ location: CLLocationCoordinate2D?) {
+        print("🌐 LocationService.handleGPSLocationUpdate called with: \(String(describing: location))")
         guard !isUpdatingFromMap else { return } // Éviter conflicts avec pinpoint
         
         showUserLocation = (location != nil)
@@ -354,27 +433,35 @@ class RideSearchViewModel: NSObject, ObservableObject {
         }
         
         if !useCustomPickup {
+            print("🎯 LocationService will call updateGPSPickup...")
             updateGPSPickup(location)
         }
     }
-
+    
     
     private func updateGPSPickup(_ coordinate: CLLocationCoordinate2D) {
+        print("📍 LocationService.updateGPSPickup called for: \(coordinate)")
         pickupCoordinate = coordinate
         isPickupFromGPS = true
         
         Task {
             do {
-                let address = try await locationService?.reverseGeocode(coordinate) ?? ""
+                print("🔄 LocationService calling GeocodeManager...")
+                
+                // Utiliser le GeocodeManager global
+                let address = try await GeocodeManager.shared.reverseGeocode(coordinate)
+                
                 await MainActor.run {
                     gpsPickupAddress = address.isEmpty ?
-                        translations["currentLocation"] ?? "Current Location" :
+                        "Position actuelle" :
                         address
                     pickupAddress = gpsPickupAddress
+                    print("✅ LocationService got address: '\(gpsPickupAddress)'")
                 }
             } catch {
+                print("❌ LocationService geocoding failed: \(error)")
                 await MainActor.run {
-                    gpsPickupAddress = translations["currentLocation"] ?? "Current Location"
+                    gpsPickupAddress = "Position actuelle"
                     pickupAddress = gpsPickupAddress
                 }
             }
@@ -999,6 +1086,82 @@ class RideSearchViewModel: NSObject, ObservableObject {
         estimatedFare = String(format: "$%.2f", total)
         showEstimate = true
     }
+    // MARK: - Ajouts au RideSearchViewModel pour pinpoint simple
+    // Ajouter ces propriétés et méthodes à RideSearchViewModel.swift
+
+    // MARK: - Nouvelles propriétés pour pinpoint simple
+    private var pinpointTask: Task<Void, Never>?
+
+    
+    
+    
+    
+    
+    
+    // MARK: - Méthode simplifiée pour le changement de centre de carte
+    func onMapCenterChangedSimple(coordinate: CLLocationCoordinate2D) {
+        guard isPinpointMode else { return }
+        
+        print("🗺️ Pinpoint center changed: \(coordinate)")
+        
+        // Mettre à jour la coordonnée destination
+        destinationCoordinate = coordinate
+        updateMapAnnotations()
+        
+        // Annuler la tâche précédente
+        pinpointTask?.cancel()
+        
+        // Valider la coordonnée
+        guard isValidCoordinate(coordinate) else {
+            pinpointAddress = "Position invalide"
+            isResolvingAddress = false
+            return
+        }
+        
+        // Démarrer la résolution avec debounce RÉDUIT
+        isResolvingAddress = true
+        
+        pinpointTask = Task { [weak self] in
+            do {
+                // CORRECTION - Debounce réduit à 800ms (au lieu de 1000ms)
+                try await Task.sleep(for: .milliseconds(800))
+                
+                guard !Task.isCancelled else { return }
+                
+                print("🔄 Pinpoint resolving address...")
+                
+                // Utiliser le GeocodeManager global
+                let address = try await GeocodeManager.shared.reverseGeocode(coordinate)
+                
+                await MainActor.run { [weak self] in
+                    guard let self = self else { return }
+                    self.pinpointAddress = address
+                    self.isResolvingAddress = false
+                    
+                    // Auto-update du champ destination
+                    self.destinationAddress = address
+                    
+                    print("✅ Pinpoint address resolved: \(address)")
+                }
+                
+            } catch {
+                await MainActor.run { [weak self] in
+                    guard let self = self else { return }
+                    self.pinpointAddress = "Adresse introuvable"
+                    self.isResolvingAddress = false
+                    
+                    print("❌ Pinpoint resolution failed: \(error)")
+                }
+            }
+        }
+    }
+    
+    // MARK: - Méthode pour nettoyer les tâches
+    func cleanupPinpointTasks() {
+        pinpointTask?.cancel()
+        pinpointTask = nil
+        GeocodeManager.shared.clearQueue()
+    }
 }
 
 // MARK: - Extension MKLocalSearchCompleterDelegate (existant - inchangé)
@@ -1023,7 +1186,7 @@ extension RideSearchViewModel: MKLocalSearchCompleterDelegate {
             isLoadingSuggestions = false
         }
     }
-       
+    
     nonisolated func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {
         Task { @MainActor in
             print("MKLocalSearchCompleter error: \(error.localizedDescription)")
@@ -1041,4 +1204,7 @@ extension RideSearchViewModel: MKLocalSearchCompleterDelegate {
         
         return "\(title), \(subtitle)"
     }
+    
 }
+
+
