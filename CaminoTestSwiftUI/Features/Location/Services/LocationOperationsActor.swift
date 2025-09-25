@@ -219,30 +219,30 @@ actor LocationOperationsActor {
                coordinate.longitude >= -180 && coordinate.longitude <= 180
     }
     
-    @MainActor
-    private func formatAddress(from placemark: CLPlacemark) async -> String {
-        var components: [String] = []
-        
-        if let streetNumber = placemark.subThoroughfare {
-            components.append(streetNumber)
-        }
-        
-        if let streetName = placemark.thoroughfare {
-            components.append(streetName)
-        }
-        
-        if let city = placemark.locality {
-            components.append(city)
-        }
-        
-        if let province = placemark.administrativeArea {
-            components.append(province)
-        }
-        
-        let result = components.joined(separator: " ")
-        return result.isEmpty ? "Address" : result
-    }
-    
+//    @MainActor
+//    private func formatAddress(from placemark: CLPlacemark) async -> String {
+//        var components: [String] = []
+//        
+//        if let streetNumber = placemark.subThoroughfare {
+//            components.append(streetNumber)
+//        }
+//        
+//        if let streetName = placemark.thoroughfare {
+//            components.append(streetName)
+//        }
+//        
+//        if let city = placemark.locality {
+//            components.append(city)
+//        }
+//        
+//        if let province = placemark.administrativeArea {
+//            components.append(province)
+//        }
+//        
+//        let result = components.joined(separator: " ")
+//        return result.isEmpty ? "Address" : result
+//    }
+//    
     // MARK: - Utilitaires statiques
     private static func formatAddressStatic(from placemark: CLPlacemark) -> String {
         var components: [String] = []

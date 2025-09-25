@@ -42,11 +42,11 @@ class RideSearchViewModel: NSObject, ObservableObject {
     @Published var pinpointAddress: String = ""
     
     // Mode de sélection d'adresse
-    enum LocationSelectionMode {
-        case search    // Mode recherche textuelle
-        case pinpoint  // Mode pinpoint visuel
-    }
-    @Published var selectionMode: LocationSelectionMode = .search
+//    enum LocationSelectionMode {
+//        case search    // Mode recherche textuelle
+//        case pinpoint  // Mode pinpoint visuel
+//    }
+//    @Published var selectionMode: LocationSelectionMode = .search
 
     // MARK: - Published Properties - Suggestions centralisées (existant)
     @Published var suggestions: [AddressSuggestion] = []
@@ -75,7 +75,7 @@ class RideSearchViewModel: NSObject, ObservableObject {
     private var destinationCoordinate: CLLocationCoordinate2D?
     private var cancellables = Set<AnyCancellable>()
     private var searchTask: Task<Void, Never>?
-    private var resolveTask: Task<Void, Never>? // Pour le géocodage inverse pinpoint
+//    private var resolveTask: Task<Void, Never>? // Pour le géocodage inverse pinpoint
     
     // Debug
     private var gpsReverseTask: Task<Void, Never>?
@@ -105,7 +105,7 @@ class RideSearchViewModel: NSObject, ObservableObject {
     // MARK: - NOUVEAU - Méthodes mode pinpoint
     func enablePinpointMode(for field: ActiveLocationField) {
         print("🟢 ViewModel: enablePinpointMode called for field: \(field)")
-        selectionMode = .pinpoint
+//        selectionMode = .pinpoint
         isPinpointMode = true
         activeFieldForPinpoint = field
         print("🟢 ViewModel: isPinpointMode set to \(isPinpointMode)")
@@ -149,18 +149,18 @@ class RideSearchViewModel: NSObject, ObservableObject {
         
         // Démarrer la résolution d'adresse immédiatement
         if let center = initialCenter {
-            onMapCenterChanged(coordinate: center)
+//            onMapCenterChanged(coordinate: center)
         }
     }
 
     func disablePinpointMode() {
-        selectionMode = .search
+//        selectionMode = .search
         isPinpointMode = false
         isResolvingAddress = false
         pinpointAddress = ""
         
         // Annuler les tâches en cours
-        resolveTask?.cancel()
+//        resolveTask?.cancel()
         
         // Retour au focus destination par défaut
         activeField = .destination
@@ -224,74 +224,74 @@ class RideSearchViewModel: NSObject, ObservableObject {
 //    }
 //
     
-    func onMapCenterChanged(coordinate: CLLocationCoordinate2D) {
-        guard isPinpointMode else { return }
-        guard !isUpdatingFromMap else { return }
-        
-        print("🗺️ Map center changed to: \(coordinate)")
-        
-        mapCenterCoordinate = coordinate
-        
-        // Mettre à jour coordonnées avec flag protection
-        isUpdatingFromMap = true
-        defer {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                self.isUpdatingFromMap = false
-            }
-        }
-        
-        switch activeFieldForPinpoint {
-        case .destination:
-            destinationCoordinate = coordinate
-            updateMapAnnotations()
-            
-        case .pickup:
-            if useCustomPickup {
-                pickupCoordinate = coordinate
-                updateMapAnnotations()
-            }
-            
-        case .none:
-            break
-        }
-        
-        // CORRECTION: Annuler VRAIMENT la tâche précédente
-        if let currentTask = resolveTask {
-            print("🚫 Cancelling previous resolve task")
-            currentTask.cancel()
-        }
-        
-        // Validation coordonnée
-        guard isValidCoordinate(coordinate) else {
-            pinpointAddress = translations["invalidLocation"] ?? "Invalid location"
-            isResolvingAddress = false
-            return
-        }
-        
-        isResolvingAddress = true
-        
-        // CORRECTION: Debounce plus robuste avec UUID de tâche
-        let taskId = UUID()
-        print("🆔 Starting new resolve task: \(taskId)")
-        
-        resolveTask = Task { [weak self, taskId] in
-            do {
-                try await Task.sleep(for: .milliseconds(800)) // Augmenté à 800ms
-                
-                guard !Task.isCancelled else {
-                    print("🚫 Task cancelled: \(taskId)")
-                    return
-                }
-                
-                print("🚀 Executing resolve task: \(taskId)")
-                await self?.performReverseGeocode(coordinate: coordinate)
-                
-            } catch {
-                print("❌ Task error: \(taskId) - \(error)")
-            }
-        }
-    }
-    
+//    func onMapCenterChanged(coordinate: CLLocationCoordinate2D) {
+//        guard isPinpointMode else { return }
+//        guard !isUpdatingFromMap else { return }
+//        
+//        print("🗺️ Map center changed to: \(coordinate)")
+//        
+//        mapCenterCoordinate = coordinate
+//        
+//        // Mettre à jour coordonnées avec flag protection
+//        isUpdatingFromMap = true
+//        defer {
+//            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+//                self.isUpdatingFromMap = false
+//            }
+//        }
+//        
+//        switch activeFieldForPinpoint {
+//        case .destination:
+//            destinationCoordinate = coordinate
+//            updateMapAnnotations()
+//            
+//        case .pickup:
+//            if useCustomPickup {
+//                pickupCoordinate = coordinate
+//                updateMapAnnotations()
+//            }
+//            
+//        case .none:
+//            break
+//        }
+//        
+//        // CORRECTION: Annuler VRAIMENT la tâche précédente
+//        if let currentTask = resolveTask {
+//            print("🚫 Cancelling previous resolve task")
+//            currentTask.cancel()
+//        }
+//        
+//        // Validation coordonnée
+//        guard isValidCoordinate(coordinate) else {
+//            pinpointAddress = translations["invalidLocation"] ?? "Invalid location"
+//            isResolvingAddress = false
+//            return
+//        }
+//        
+//        isResolvingAddress = true
+//        
+//        // CORRECTION: Debounce plus robuste avec UUID de tâche
+//        let taskId = UUID()
+//        print("🆔 Starting new resolve task: \(taskId)")
+//        
+//        resolveTask = Task { [weak self, taskId] in
+//            do {
+//                try await Task.sleep(for: .milliseconds(800)) // Augmenté à 800ms
+//                
+//                guard !Task.isCancelled else {
+//                    print("🚫 Task cancelled: \(taskId)")
+//                    return
+//                }
+//                
+//                print("🚀 Executing resolve task: \(taskId)")
+//                await self?.performReverseGeocode(coordinate: coordinate)
+//                
+//            } catch {
+//                print("❌ Task error: \(taskId) - \(error)")
+//            }
+//        }
+//    }
+//    
     
     
     

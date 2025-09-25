@@ -104,9 +104,9 @@ public struct MapboxWrapper: UIViewRepresentable {
         }.store(in: &cancellables)
         
         // Gesture pour détecter les mouvements en mode pinpoint
-        let panGesture = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleMapPan(_:)))
-        panGesture.delegate = context.coordinator
-        mapView.addGestureRecognizer(panGesture)
+//        let panGesture = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleMapPan(_:)))
+//        panGesture.delegate = context.coordinator
+//        mapView.addGestureRecognizer(panGesture)
         
         // Tap gesture existant
         let tapGesture = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleMapTap(_:)))
@@ -311,48 +311,49 @@ extension MapboxWrapper {
         @objc func handleMapTap(_ gesture: UITapGestureRecognizer) {
             guard let mapView = gesture.view as? MapView else { return }
             
-            let point = gesture.location(in: mapView)
-            
-            // CORRECTION - Validation du point avant conversion
-            guard point.x > 0 && point.y > 0 else {
-                print("Invalid tap point: \(point)")
-                return
-            }
-            
-            let coordinate = mapView.mapboxMap.coordinate(for: point)
-            
-            // Validation coordonnées
-            guard MapboxConfig.isValidCanadianCoordinate(coordinate) else {
-                print("⚠️ Tap outside service area: \(coordinate)")
-                return
-            }
-            
-            print("Valid map tap at: \(coordinate)")
-            parent.onMapTap(coordinate)
-        }
-        @objc func handleMapPan(_ gesture: UIPanGestureRecognizer) {
-            guard let mapView = gesture.view as? MapView else { return }
-            
-            // Seulement si en mode pinpoint ET gesture terminée
-            guard parent.isPinpointMode && gesture.state == .ended else { return }
-            
-            print("🟦 Coordinator: Map pan ended in pinpoint mode")
-            
-            // Attendre un peu que la carte se stabilise
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            if parent.isPinpointMode {
+                // ✅ Mode pinpoint : utiliser le CENTRE de la carte
                 let currentCenter = mapView.mapboxMap.cameraState.center
                 
-                guard MapboxConfig.isValidCanadianCoordinate(currentCenter) else {
-                    print("🟦 Coordinator: Invalid coordinate after pan: \(currentCenter)")
-                    return
-                }
+                guard MapboxConfig.isValidCanadianCoordinate(currentCenter) else { return }
                 
-                print("🟦 Coordinator: Pan ended at \(currentCenter)")
+                print("✅ Pinpoint tap - using center: \(currentCenter)")
+                parent.onPinpointMove(currentCenter)
                 
-                // CORRECTION - Appeler le callback pinpoint au lieu du tap
-                self.parent.onPinpointMove(currentCenter)
+            } else {
+                // Mode normal : utiliser position du tap
+                let point = gesture.location(in: mapView)
+                let coordinate = mapView.mapboxMap.coordinate(for: point)
+                
+                guard MapboxConfig.isValidCanadianCoordinate(coordinate) else { return }
+                
+                print("✅ Normal tap at: \(coordinate)")
+                parent.onMapTap(coordinate)
             }
         }
+//        @objc func handleMapPan(_ gesture: UIPanGestureRecognizer) {
+//            guard let mapView = gesture.view as? MapView else { return }
+//            
+//            // Seulement si en mode pinpoint ET gesture terminée
+//            guard parent.isPinpointMode && gesture.state == .ended else { return }
+//            
+//            print("🟦 Coordinator: Map pan ended in pinpoint mode")
+//            
+//            // Attendre un peu que la carte se stabilise
+//            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+//                let currentCenter = mapView.mapboxMap.cameraState.center
+//                
+//                guard MapboxConfig.isValidCanadianCoordinate(currentCenter) else {
+//                    print("🟦 Coordinator: Invalid coordinate after pan: \(currentCenter)")
+//                    return
+//                }
+//                
+//                print("🟦 Coordinator: Pan ended at \(currentCenter)")
+//                
+//                // CORRECTION - Appeler le callback pinpoint au lieu du tap
+//                self.parent.onPinpointMove(currentCenter)
+//            }
+//        }
         // NOUVEAU - Delegate pour éviter conflits gesture
         public func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
             return false // Éviter conflits avec pan/zoom
