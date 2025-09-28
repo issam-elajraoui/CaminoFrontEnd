@@ -56,16 +56,8 @@ public class LocationService: NSObject, LocationServiceProtocol {
     private func setupLocationManagerAsync() async {
         await updateLocationAvailability()
     }
-//    private func checkInitialPermissions() async {
-//        let servicesEnabled = await Task.detached { @Sendable in
-//            return CLLocationManager.locationServicesEnabled()
-//        }.value
-//        
-//        if !servicesEnabled {
-//            isLocationAvailable = false
-//        }
-//        await updateLocationAvailability()
-//    }
+
+    
     private func checkInitialPermissions() async {
         await updateLocationAvailability()
     }
@@ -233,16 +225,6 @@ public class LocationService: NSObject, LocationServiceProtocol {
     }
     
     // MARK: - Utilitaires thread-safe
-//    private func updateLocationAvailability() async {
-//        let servicesEnabled = await Task.detached { @Sendable in
-//            return CLLocationManager.locationServicesEnabled()
-//        }.value
-//        
-//        let hasPermission = (authorizationStatus == .authorizedWhenInUse ||
-//                           authorizationStatus == .authorizedAlways)
-//        
-//        isLocationAvailable = servicesEnabled && hasPermission
-//    }
     private func updateLocationAvailability() async {
         let hasPermission = (authorizationStatus == .authorizedWhenInUse ||
                            authorizationStatus == .authorizedAlways)
