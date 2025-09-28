@@ -16,7 +16,7 @@ public struct MapboxConfig {
     public static let styleURL = "mapbox://styles/mapbox/light-v11"
     public static let fallbackRegion = CLLocationCoordinate2D(latitude: 45.4215, longitude: -75.6972) // Ottawa
     public static let defaultZoom: Double = 12.0
-    public static let animationDuration: TimeInterval = 1.0
+
     
     // MARK: - Limites de sécurité
     public static let maxZoom: Double = 18.0
@@ -26,27 +26,24 @@ public struct MapboxConfig {
         northEast: CLLocationCoordinate2D(latitude: 48.0, longitude: -73.0)
     )
     
-    // MARK: - Couleurs thème canadien
-    public struct Colors {
-        public static let pickupRed = UIColor(red: 1.0, green: 0.0, blue: 0.0, alpha: 1.0) // Rouge Canada
-        public static let destinationGreen = UIColor(red: 0.0, green: 0.6, blue: 0.0, alpha: 1.0)
-        public static let routeBlue = UIColor(red: 0.2, green: 0.4, blue: 0.8, alpha: 0.8)
-        public static let backgroundWhite = UIColor.white
-        public static let borderGray = UIColor(red: 0.8, green: 0.8, blue: 0.8, alpha: 1.0)
-    }
+//    // MARK: - Couleurs thème canadien
+//    public struct Colors {
+//        public static let pickupRed = UIColor(red: 1.0, green: 0.0, blue: 0.0, alpha: 1.0) // Rouge Canada
+//        public static let destinationGreen = UIColor(red: 0.0, green: 0.6, blue: 0.0, alpha: 1.0)
+//        public static let routeBlue = UIColor(red: 0.2, green: 0.4, blue: 0.8, alpha: 0.8)
+//        public static let backgroundWhite = UIColor.white
+//        public static let borderGray = UIColor(red: 0.8, green: 0.8, blue: 0.8, alpha: 1.0)
+//    }
     
     // MARK: - Configuration des annotations
     public struct Annotations {
         public static let pickupSize: CGFloat = 20.0
         public static let destinationSize: CGFloat = 20.0
-        public static let borderWidth: CGFloat = 3.0
     }
     
     // MARK: - Mode dégradé offline
     public struct Fallback {
         public static let isOfflineModeEnabled = true
-        public static let maxOfflineRetries = 3
-        public static let offlineTimeout: TimeInterval = 5.0
     }
     
     // MARK: - Validation sécurisée des coordonnées
