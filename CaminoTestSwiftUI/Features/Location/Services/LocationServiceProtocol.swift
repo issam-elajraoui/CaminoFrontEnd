@@ -19,5 +19,5 @@ public protocol LocationServiceProtocol: ObservableObject {
     func requestLocationPermission()
     func startLocationUpdates()
     func stopLocationUpdates()
-    func geocodeAddress(_ address: String) async throws -> CLLocationCoordinate2D
+//    func geocodeAddress(_ address: String) async throws -> CLLocationCoordinate2D
 }
