@@ -177,9 +177,7 @@ public struct MapboxWrapper: UIViewRepresentable {
         }
            
         guard !isUpdatingCenter else { return }
-        
-        guard !isUpdatingCenter else { return } // Éviter updates pendant sync
-        
+                
         let validCenter = MapboxConfig.isValidCoordinate(center) ? center : MapboxConfig.fallbackRegion
         
         // Vérifier si vraiment besoin d'update

@@ -166,13 +166,6 @@ public class LocationService: NSObject, LocationServiceProtocol {
         )
     }
     
-    // MARK: - Géocodage inverse non-bloquant via Actor
-    public func reverseGeocode(_ coordinate: CLLocationCoordinate2D) async throws -> String {
-        print("🔄 LocationService.reverseGeocode redirecting to GeocodeManager")
-        return try await GeocodeManager.shared.reverseGeocode(coordinate)
-    }
-    
-    
     
     
     // MARK: - Obtenir position actuelle non-bloquante

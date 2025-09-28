@@ -36,8 +36,6 @@ class RideSearchViewModel: NSObject, ObservableObject {
 
     // MARK: - NOUVEAU - Mode Pinpoint
     @Published var isPinpointMode: Bool = false
-    @Published var activeFieldForPinpoint: ActiveLocationField = .destination
-    @Published var mapCenterCoordinate: CLLocationCoordinate2D?
     @Published var isResolvingAddress: Bool = false
     @Published var pinpointAddress: String = ""
     
@@ -104,7 +102,6 @@ class RideSearchViewModel: NSObject, ObservableObject {
         print("🟢 ViewModel: enablePinpointMode called for field: \(field)")
 //        selectionMode = .pinpoint
         isPinpointMode = true
-        activeFieldForPinpoint = field
         print("🟢 ViewModel: isPinpointMode set to \(isPinpointMode)")
 
         
@@ -141,8 +138,6 @@ class RideSearchViewModel: NSObject, ObservableObject {
                 initialCenter = CLLocationCoordinate2D(latitude: 45.4215, longitude: -75.6972)
             }
         }
-        
-        mapCenterCoordinate = initialCenter
         
 
     }

@@ -20,5 +20,4 @@ public protocol LocationServiceProtocol: ObservableObject {
     func startLocationUpdates()
     func stopLocationUpdates()
     func geocodeAddress(_ address: String) async throws -> CLLocationCoordinate2D
-    func reverseGeocode(_ coordinate: CLLocationCoordinate2D) async throws -> String
 }

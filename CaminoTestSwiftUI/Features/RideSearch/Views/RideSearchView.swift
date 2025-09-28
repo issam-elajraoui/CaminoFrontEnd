@@ -645,4 +645,5 @@ struct RideSearchView: View {
             .store(in: &cancellables)
     }
     
+
 }
