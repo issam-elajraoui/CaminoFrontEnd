@@ -22,10 +22,7 @@ public struct MapboxWrapper: UIViewRepresentable {
     @Binding var showUserLocation: Bool
     
     @Binding var isPinpointMode: Bool
-    
-    
-    // MARK: Timer et État PinPoint
-    @State private var mapTimer: Timer?
+
     
     // MARK: - Propriétés de callback
     let onMapTap: (CLLocationCoordinate2D) -> Void
@@ -135,14 +132,6 @@ public struct MapboxWrapper: UIViewRepresentable {
         
         return mapView
     }
-    
-    // MARK: cleanup du timer
-    private func cleanup() {
-        mapTimer?.invalidate()
-        mapTimer = nil
-    }
-    
-    @State private var cancellables = Set<AnyCancellable>()
     
     // MARK: - Mode dégradé (inchangé)
     private func createFallbackView() -> UIView {
@@ -339,29 +328,7 @@ extension MapboxWrapper {
             self.parent = parent
         }
         
-//        @objc func handleMapTap(_ gesture: UITapGestureRecognizer) {
-//            guard let mapView = gesture.view as? MapView else { return }
-//            
-//            if parent.isPinpointMode {
-//                // ✅ Mode pinpoint : utiliser le CENTRE de la carte
-//                let currentCenter = mapView.mapboxMap.cameraState.center
-//
-//                guard MapboxConfig.isValidCanadianCoordinate(currentCenter) else { return }
-//                
-//                print("✅ Pinpoint tap - using center: \(currentCenter)")
-//                parent.onPinpointMove(currentCenter)
-//                
-//            } else {
-//                // Mode normal : utiliser position du tap
-//                let point = gesture.location(in: mapView)
-//                let coordinate = mapView.mapboxMap.coordinate(for: point)
-//                
-//                guard MapboxConfig.isValidCanadianCoordinate(coordinate) else { return }
-//                
-//                print("✅ Normal tap at: \(coordinate)")
-//                parent.onMapTap(coordinate)
-//            }
-//        }
+
         @objc func handleMapTap(_ gesture: UITapGestureRecognizer) {
             guard let mapView = gesture.view as? MapView else { return }
             
@@ -392,33 +359,6 @@ extension MapboxWrapper {
         
 
         
-//        @objc func handleMapPan(_ gesture: UIPanGestureRecognizer) {
-//            guard let mapView = gesture.view as? MapView else { return }
-//            
-//            // Seulement si en mode pinpoint ET gesture terminée
-//            guard parent.isPinpointMode && gesture.state == .ended else { return }
-//            
-//            print("🟦 Coordinator: Map pan ended in pinpoint mode")
-//            
-//            // Attendre un peu que la carte se stabilise
-//            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-//                let currentCenter = mapView.mapboxMap.cameraState.center
-//                
-//                guard MapboxConfig.isValidCanadianCoordinate(currentCenter) else {
-//                    print("🟦 Coordinator: Invalid coordinate after pan: \(currentCenter)")
-//                    return
-//                }
-//                
-//                print("🟦 Coordinator: Pan ended at \(currentCenter)")
-//                
-//                // CORRECTION - Appeler le callback pinpoint au lieu du tap
-//                self.parent.onPinpointMove(currentCenter)
-//            }
-//        }
-        // NOUVEAU - Delegate pour éviter conflits gesture
-//        public func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
-//            return false // Éviter conflits avec pan/zoom
-//        }
         public func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
             return true  // ✅ COOPÉRATION avec Mapbox
         }

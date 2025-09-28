@@ -77,9 +77,6 @@ class RideSearchViewModel: NSObject, ObservableObject {
     private var searchTask: Task<Void, Never>?
 //    private var resolveTask: Task<Void, Never>? // Pour le géocodage inverse pinpoint
     
-    // Debug
-    private var gpsReverseTask: Task<Void, Never>?
-    
     private lazy var searchCompleter: MKLocalSearchCompleter = {
         let completer = MKLocalSearchCompleter()
         completer.delegate = self
@@ -147,10 +144,7 @@ class RideSearchViewModel: NSObject, ObservableObject {
         
         mapCenterCoordinate = initialCenter
         
-        // Démarrer la résolution d'adresse immédiatement
-//        if let center = initialCenter {
-////            onMapCenterChanged(coordinate: center)
-//        }
+
     }
 
     func disablePinpointMode() {
@@ -169,53 +163,8 @@ class RideSearchViewModel: NSObject, ObservableObject {
     private var isUpdatingFromMap: Bool = false
 
 
-    // Méthode d'auto-update du champ destination
-    private func autoUpdateDestinationField(_ address: String) async {
-        guard !isUpdatingFromMap else { return } // Éviter boucles
-        
-        await MainActor.run { [weak self] in
-            guard let self = self else { return }
-            
-            switch self.activeFieldForPinpoint {
-            case .destination:
-                // Vérifier si address vraiment différente
-                if self.destinationAddress != address {
-                    self.destinationAddress = address
-                    
-                    // Déclencher route calculation avec debounce
-                    if self.pickupCoordinate != nil {
-                        self.scheduleRouteCalculation()
-                    }
-                }
-                
-            case .pickup:
-                if self.useCustomPickup {
-                    if self.customPickupAddress != address {
-                        self.customPickupAddress = address
-                        self.pickupAddress = address
-                        self.isPickupFromGPS = false
-                        
-                        // Déclencher route calculation avec debounce
-                        if self.destinationCoordinate != nil {
-                            self.scheduleRouteCalculation()
-                        }
-                    }
-                }
-                
-            case .none:
-                break
-            }
-        }
-    }
-    
-    private func updatePinpointAddress(_ address: String) async {
-        await MainActor.run { [weak self] in
-            guard let self = self else { return }
-            
-            self.pinpointAddress = address
-            self.isResolvingAddress = false
-        }
-    }
+
+
     
     
     private var routeCalculationTask: Task<Void, Never>?

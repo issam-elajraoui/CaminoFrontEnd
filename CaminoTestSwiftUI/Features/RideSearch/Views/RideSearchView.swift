@@ -645,39 +645,4 @@ struct RideSearchView: View {
             .store(in: &cancellables)
     }
     
-    private func updateMapboxCenter(for annotations: [LocationAnnotation]) {
-        guard !annotations.isEmpty else { return }
-        
-        // Éviter updates pendant mode pinpoint
-        guard !viewModel.isPinpointMode else { return }
-        
-        if annotations.count == 1 {
-            let newCenter = annotations[0].coordinate
-            // Vérifier distance avant update
-            let currentDistance = CLLocation(latitude: mapboxCenter.latitude, longitude: mapboxCenter.longitude)
-                .distance(from: CLLocation(latitude: newCenter.latitude, longitude: newCenter.longitude))
-            
-            if currentDistance > 50 { // Minimum 50 mètres
-                mapboxCenter = newCenter
-            }
-        } else if annotations.count >= 2 {
-            let pickup = annotations.first { $0.type == .pickup }?.coordinate
-            let destination = annotations.first { $0.type == .destination }?.coordinate
-            
-            if let pickup = pickup, let destination = destination {
-                let newCenter = CLLocationCoordinate2D(
-                    latitude: (pickup.latitude + destination.latitude) / 2,
-                    longitude: (pickup.longitude + destination.longitude) / 2
-                )
-                
-                // Vérifier distance avant update
-                let currentDistance = CLLocation(latitude: mapboxCenter.latitude, longitude: mapboxCenter.longitude)
-                    .distance(from: CLLocation(latitude: newCenter.latitude, longitude: newCenter.longitude))
-                
-                if currentDistance > 50 { // Minimum 50 mètres
-                    mapboxCenter = newCenter
-                }
-            }
-        }
-    }
 }
