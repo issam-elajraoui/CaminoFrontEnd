@@ -75,7 +75,7 @@ public struct MapboxWrapper: UIViewRepresentable {
     
     // MARK: - Création Mapbox corrigée
     private func createMapboxView(context: Context) -> MapView {
-        let validCenter = MapboxConfig.isValidCanadianCoordinate(center) ? center : MapboxConfig.fallbackRegion
+        let validCenter = MapboxConfig.isValidCoordinate(center) ? center : MapboxConfig.fallbackRegion
         
         let mapInitOptions = MapInitOptions(
             cameraOptions: CameraOptions(
@@ -191,7 +191,7 @@ public struct MapboxWrapper: UIViewRepresentable {
         
         guard !isUpdatingCenter else { return } // Éviter updates pendant sync
         
-        let validCenter = MapboxConfig.isValidCanadianCoordinate(center) ? center : MapboxConfig.fallbackRegion
+        let validCenter = MapboxConfig.isValidCoordinate(center) ? center : MapboxConfig.fallbackRegion
         
         // Vérifier si vraiment besoin d'update
         let currentCenter = mapView.mapboxMap.cameraState.center
@@ -238,7 +238,7 @@ public struct MapboxWrapper: UIViewRepresentable {
         var pointAnnotations: [PointAnnotation] = []
         
         for annotation in annotations {
-            guard MapboxConfig.isValidCanadianCoordinate(annotation.coordinate) else {
+            guard MapboxConfig.isValidCoordinate(annotation.coordinate) else {
                 print(" Coordonnée invalide ignorée: \(annotation.coordinate)")
                 continue
             }
@@ -278,7 +278,7 @@ public struct MapboxWrapper: UIViewRepresentable {
         // Conversion sécurisée MKPolyline vers coordonnées
         let coordinates = route.polyline.coordinates
         let validCoordinates = coordinates.filter {
-            MapboxConfig.isValidCanadianCoordinate($0)
+            MapboxConfig.isValidCoordinate($0)
         }
         
         guard validCoordinates.count >= 2 else {
@@ -369,7 +369,7 @@ extension MapboxWrapper {
             let point = gesture.location(in: mapView)
             let coordinate = mapView.mapboxMap.coordinate(for: point)
             
-            guard MapboxConfig.isValidCanadianCoordinate(coordinate) else { return }
+            guard MapboxConfig.isValidCoordinate(coordinate) else { return }
             parent.onMapTap(coordinate)
         }
         
@@ -383,7 +383,7 @@ extension MapboxWrapper {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 let currentCenter = mapView.mapboxMap.cameraState.center
                 
-                guard MapboxConfig.isValidCanadianCoordinate(currentCenter) else { return }
+                guard MapboxConfig.isValidCoordinate(currentCenter) else { return }
                 
                 print("🟦 Pan ended - center: \(currentCenter)")
                 self.parent.onPinpointMove(currentCenter)

@@ -82,28 +82,7 @@ actor LocationOperationsActor {
         }
     }
     
-    private func performReverseGeocodingOperation(
-        location: CLLocation
-    ) async throws -> String {
-        
-        return try await withCheckedThrowingContinuation { continuation in
-            geocoder.reverseGeocodeLocation(location) { placemarks, error in
-                if error != nil {
-                    continuation.resume(throwing: LocationError.geocodingFailed)
-                    return
-                }
-                
-                guard let placemark = placemarks?.first else {
-                    continuation.resume(throwing: LocationError.geocodingFailed)
-                    return
-                }
-                
-                // ✅ UTILISER LA MÉTHODE STATIQUE CENTRALISÉE
-                let address = Self.formatAddressStatic(from: placemark)
-                continuation.resume(returning: address)
-            }
-        }
-    }
+
     // MARK: - Utilitaires thread-safe
     private func sanitizeAddress(_ address: String) -> String {
         let maxLength = 200
@@ -119,37 +98,4 @@ actor LocationOperationsActor {
         
         return filtered.trimmingCharacters(in: .whitespacesAndNewlines)
     }
-    
-    private func isValidCoordinate(_ coordinate: CLLocationCoordinate2D) -> Bool {
-        return CLLocationCoordinate2DIsValid(coordinate) &&
-               coordinate.latitude >= -90 && coordinate.latitude <= 90 &&
-               coordinate.longitude >= -180 && coordinate.longitude <= 180
-    }
-    
-    // MARK: - Utilitaires statiques
-    private static func formatAddressStatic(from placemark: CLPlacemark) -> String {
-        var components: [String] = []
-        
-        // Numéro et nom de rue
-        if let streetNumber = placemark.subThoroughfare {
-            components.append(streetNumber)
-        }
-        if let streetName = placemark.thoroughfare {
-            components.append(streetName)
-        }
-        
-        // Ville
-        if let city = placemark.locality {
-            components.append(city)
-        }
-        
-        // Province (optionnel pour un affichage plus complet)
-        if let province = placemark.administrativeArea {
-            components.append(province)
-        }
-        
-        // ✅ Gestion plus robuste du cas vide
-        return components.isEmpty ? "Adresse inconnue" : components.joined(separator: " ")
-    }           
-    
 }

@@ -50,7 +50,7 @@ public struct MapboxConfig {
     }
     
     // MARK: - Validation sécurisée des coordonnées
-    public static func isValidCanadianCoordinate(_ coordinate: CLLocationCoordinate2D) -> Bool {
+    public static func isValidCoordinate(_ coordinate: CLLocationCoordinate2D) -> Bool {
         return CLLocationCoordinate2DIsValid(coordinate) &&
                coordinate.latitude >= validCanadianBounds.southWest.latitude &&
                coordinate.latitude <= validCanadianBounds.northEast.latitude &&

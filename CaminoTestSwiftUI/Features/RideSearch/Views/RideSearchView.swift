@@ -93,10 +93,6 @@ struct RideSearchView: View {
                     viewModel.cleanupPinpointTasks()
                 }
         
-        // 3. AJOUTER dans onDisappear
-        .onDisappear {
-            viewModel.cleanupPinpointTasks()
-        }
         
         // NOUVEAU - Observer les changements de position du sheet
         .onChange(of: bottomSheetHeight) { oldValue, newValue in

@@ -274,7 +274,7 @@ class RideSearchViewModel: NSObject, ObservableObject {
         showUserLocation = (location != nil)
         
         guard let location = location,
-              isValidCoordinate(location) else {
+              MapboxConfig.isValidCoordinate(location) else {
             handleGPSUnavailable()
             return
         }
@@ -743,27 +743,20 @@ class RideSearchViewModel: NSObject, ObservableObject {
     
     // MARK: - Méthodes de gestion des locations (existant)
     func setPickupLocation(_ coordinate: CLLocationCoordinate2D) {
-        guard isValidCoordinate(coordinate) else { return }
+        guard MapboxConfig.isValidCoordinate(coordinate) else { return }
         pickupCoordinate = coordinate
         updateMapAnnotations()
         clearErrors()
     }
     
     func setDestinationLocation(_ coordinate: CLLocationCoordinate2D) {
-        guard isValidCoordinate(coordinate) else { return }
+        guard MapboxConfig.isValidCoordinate(coordinate) else { return }
         destinationCoordinate = coordinate
         updateMapAnnotations()
         clearErrors()
         Task {
             await calculateRoute()
         }
-    }
-    
-    private func isValidCoordinate(_ coordinate: CLLocationCoordinate2D) -> Bool {
-        let validLatRange = 43.0...48.0
-        let validLonRange = -78.0...(-73.0)
-        return validLatRange.contains(coordinate.latitude) &&
-               validLonRange.contains(coordinate.longitude)
     }
     
     private func updateMapAnnotations() {
@@ -855,7 +848,7 @@ class RideSearchViewModel: NSObject, ObservableObject {
             throw RideSearchError.invalidLocation
         }
         
-        guard isValidCoordinate(pickup) && isValidCoordinate(destination) else {
+        guard MapboxConfig.isValidCoordinate(pickup) && MapboxConfig.isValidCoordinate(destination) else {
             throw RideSearchError.invalidLocation
         }
         
@@ -959,7 +952,7 @@ class RideSearchViewModel: NSObject, ObservableObject {
         pinpointTask?.cancel()
         
         // Valider la coordonnée
-        guard isValidCoordinate(coordinate) else {
+        guard MapboxConfig.isValidCoordinate(coordinate) else {
             pinpointAddress = "Position invalide"
             isResolvingAddress = false
             return
@@ -1053,5 +1046,3 @@ extension RideSearchViewModel: MKLocalSearchCompleterDelegate {
     }
     
 }
-
-
