@@ -11,11 +11,7 @@ class RideSearchViewModel: NSObject, ObservableObject {
     @Published var mapPosition = MapCameraPosition.region(RideSearchConfig.ottawaRegion)
     @Published var annotations: [LocationAnnotation] = []
     @Published var showUserLocation = false
-    @Published var currentLanguage = "en" {
-        didSet {
-            clearErrors()
-        }
-    }
+
     @Published var pickupAddress = ""
     @Published var destinationAddress = ""
     @Published var passengerCount = 1
@@ -39,12 +35,6 @@ class RideSearchViewModel: NSObject, ObservableObject {
     @Published var isResolvingAddress: Bool = false
     @Published var pinpointAddress: String = ""
     
-    // Mode de sélection d'adresse
-//    enum LocationSelectionMode {
-//        case search    // Mode recherche textuelle
-//        case pinpoint  // Mode pinpoint visuel
-//    }
-//    @Published var selectionMode: LocationSelectionMode = .search
 
     // MARK: - Published Properties - Suggestions centralisées (existant)
     @Published var suggestions: [AddressSuggestion] = []
@@ -73,7 +63,6 @@ class RideSearchViewModel: NSObject, ObservableObject {
     private var destinationCoordinate: CLLocationCoordinate2D?
     private var cancellables = Set<AnyCancellable>()
     private var searchTask: Task<Void, Never>?
-//    private var resolveTask: Task<Void, Never>? // Pour le géocodage inverse pinpoint
     
     private lazy var searchCompleter: MKLocalSearchCompleter = {
         let completer = MKLocalSearchCompleter()
@@ -157,11 +146,6 @@ class RideSearchViewModel: NSObject, ObservableObject {
 
     private var isUpdatingFromMap: Bool = false
 
-
-
-
-    
-    
     private var routeCalculationTask: Task<Void, Never>?
 
     private func scheduleRouteCalculation() {
@@ -271,7 +255,7 @@ class RideSearchViewModel: NSObject, ObservableObject {
         if !useCustomPickup {
             pickupCoordinate = ottawaCoordinate
             isPickupFromGPS = false
-            gpsPickupAddress = translations["fallbackLocation"] ?? "Ottawa, ON"
+            gpsPickupAddress = "fallbackLocation".localized
             pickupAddress = gpsPickupAddress
             updateMapAnnotations()
         }
@@ -385,7 +369,7 @@ class RideSearchViewModel: NSObject, ObservableObject {
             self.isLoadingSuggestions = false
             self.suggestions = []
             self.showSuggestions = false
-            self.suggestionError = error.localizedDescription(language: currentLanguage)
+            self.suggestionError = error.localizedDescription(language: LocalizationManager.shared.currentLanguage)
             
             Task {
                 try? await Task.sleep(for: .seconds(3))
@@ -431,7 +415,7 @@ class RideSearchViewModel: NSObject, ObservableObject {
         }
         
         guard let locationService = locationService, locationService.isLocationAvailable else {
-            suggestionError = currentLanguage == "fr" ?
+            suggestionError = LocalizationManager.shared.currentLanguage == "fr" ?
                 "Services de localisation indisponibles" :
                 "Location services unavailable"
             return
@@ -547,92 +531,7 @@ class RideSearchViewModel: NSObject, ObservableObject {
         return String(filtered.prefix(maxLength))
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
-    
-    // MARK: - Traductions complètes avec nouveaux termes pinpoint
-    var translations: [String: String] {
-        if currentLanguage == "fr" {
-            return [
-                "findRide": "Trouver une course",
-                "pickupLocation": "Lieu de départ",
-                "destination": "Destination",
-                "passengers": "Passagers",
-                "serviceType": "Type",
-                "economy": "Éco",
-                "standard": "Std",
-                "premium": "Prem",
-                "searching": "Recherche...",
-                "findDrivers": "Chercher",
-                "estimatedFare": "Tarif est.",
-                "distance": "Distance",
-                "pickupRequired": "Lieu de départ requis",
-                "destinationRequired": "Destination requise",
-                "noDriversFound": "Aucun conducteur disponible",
-                "searchError": "Erreur de recherche",
-                "locationError": "Erreur de localisation",
-                "addressNotFound": "Adresse introuvable",
-                "invalidAddress": "Adresse invalide",
-                "invalidLocation": "Position invalide",
-                "permissionDenied": "Permission de localisation refusée",
-                "locationDisabled": "Services de localisation désactivés",
-                "gpsEnabled": "GPS",
-                "gpsDisabled": "Pas de GPS",
-                "enableGpsMessage": "Activez le GPS pour de meilleurs services de localisation",
-                "enableGps": "Activer",
-                "currentLocation": "Position actuelle",
-                "fallbackLocation": "Ottawa, ON",
-                "tapToCustomize": "Appui long pour modifier",
-                "usingGpsLocation": "Position GPS utilisée",
-                "customPickupEnabled": "Départ personnalisé activé",
-                "searchMode": "Recherche",
-                "pinpointMode": "Sur la carte",
-                "selectOnMap": "Choisir sur la carte",
-                "confirmLocation": "Confirmer la position",
-                "resolvingAddress": "Recherche de l'adresse...",
-                "dragMapToChoose": "Déplacez la carte pour choisir"
-            ]
-        } else {
-            return [
-                "findRide": "Find a Ride",
-                "pickupLocation": "Pickup Location",
-                "destination": "Destination",
-                "passengers": "Passengers",
-                "serviceType": "Type",
-                "economy": "Eco",
-                "standard": "Std",
-                "premium": "Prem",
-                "searching": "Searching...",
-                "findDrivers": "Find Drivers",
-                "estimatedFare": "Est. Fare",
-                "distance": "Distance",
-                "pickupRequired": "Pickup location required",
-                "destinationRequired": "Destination required",
-                "noDriversFound": "No drivers available",
-                "searchError": "Search failed",
-                "locationError": "Location error",
-                "addressNotFound": "Address not found",
-                "invalidAddress": "Invalid address",
-                "invalidLocation": "Invalid location",
-                "permissionDenied": "Location permission denied",
-                "locationDisabled": "Location services disabled",
-                "gpsEnabled": "GPS",
-                "gpsDisabled": "No GPS",
-                "enableGpsMessage": "Enable GPS for better location services",
-                "enableGps": "Enable",
-                "currentLocation": "Current Location",
-                "fallbackLocation": "Ottawa, ON",
-                "tapToCustomize": "Long press to customize",
-                "usingGpsLocation": "Using GPS location",
-                "customPickupEnabled": "Custom pickup enabled",
-                "searchMode": "Search",
-                "pinpointMode": "On map",
-                "selectOnMap": "Select on map",
-                "confirmLocation": "Confirm location",
-                "resolvingAddress": "Finding address...",
-                "dragMapToChoose": "Drag map to choose"
-            ]
-        }
-    }
-    
+
     // MARK: - Méthodes d'interaction avec la carte (existant)
     func handleMapTap(at location: CGPoint) {
         activeField = .destination
@@ -643,13 +542,13 @@ class RideSearchViewModel: NSObject, ObservableObject {
     
     func centerOnUserLocation() async {
         guard let locationService = locationService else {
-            userFriendlyErrorMessage = translations["locationDisabled"] ?? "Location services disabled"
+            userFriendlyErrorMessage = "locationDisabled".localized
             showError = true
             return
         }
         
         guard locationService.isLocationAvailable else {
-            userFriendlyErrorMessage = translations["locationDisabled"] ?? "Location services disabled"
+            userFriendlyErrorMessage = "locationDisabled".localized
             showError = true
             return
         }
@@ -674,12 +573,12 @@ class RideSearchViewModel: NSObject, ObservableObject {
             }
         } catch let locationError as LocationError {
             await MainActor.run {
-                userFriendlyErrorMessage = locationError.localizedDescription(language: currentLanguage)
+                userFriendlyErrorMessage = locationError.localizedDescription(language: LocalizationManager.shared.currentLanguage)
                 showError = true
             }
         } catch {
             await MainActor.run {
-                userFriendlyErrorMessage = translations["locationError"] ?? "Location error"
+                userFriendlyErrorMessage = "locationError".localized
                 showError = true
             }
         }
@@ -753,7 +652,7 @@ class RideSearchViewModel: NSObject, ObservableObject {
             userFriendlyErrorMessage = rideSearchError.localizedDescription
             showError = true
         } catch {
-            userFriendlyErrorMessage = translations["searchError"] ?? "Search failed"
+            userFriendlyErrorMessage = "searchError".localized
             showError = true
         }
     }
@@ -768,18 +667,18 @@ class RideSearchViewModel: NSObject, ObservableObject {
         
         if useCustomPickup {
             if customPickupAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                pickupError = translations["pickupRequired"] ?? "Required"
+                pickupError = "pickupRequired".localized
                 isValid = false
             }
         } else {
             if pickupCoordinate == nil {
-                pickupError = translations["locationError"] ?? "GPS location required"
+                pickupError = "locationError".localized
                 isValid = false
             }
         }
         
         if destinationAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            destinationError = translations["destinationRequired"] ?? "Required"
+            destinationError = "destinationRequired".localized
             isValid = false
         }
         
@@ -870,17 +769,9 @@ class RideSearchViewModel: NSObject, ObservableObject {
         estimatedFare = String(format: "$%.2f", total)
         showEstimate = true
     }
-    // MARK: - Ajouts au RideSearchViewModel pour pinpoint simple
-    // Ajouter ces propriétés et méthodes à RideSearchViewModel.swift
 
     // MARK: - Nouvelles propriétés pour pinpoint simple
     private var pinpointTask: Task<Void, Never>?
-
-    
-    
-    
-    
-    
     
     // MARK: - Méthode simplifiée pour le changement de centre de carte
     func onMapCenterChangedSimple(coordinate: CLLocationCoordinate2D) {

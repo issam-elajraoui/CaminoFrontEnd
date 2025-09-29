@@ -1,0 +1,82 @@
+//
+//  Localizable.strings
+//  CaminoTestSwiftUI
+//
+//  Created by Issam EL MOUJAHID on 2025-09-29.
+//
+
+/* Location Permission View */
+"title" = "Accès à la localisation requis";
+"subtitle" = "Pour trouver des conducteurs à proximité";
+"feature1Title" = "Trouver des conducteurs";
+"feature1Desc" = "Nous avons besoin de votre localisation pour vous connecter avec des conducteurs disponibles dans votre région";
+"feature2Title" = "Prise en charge précise";
+"feature2Desc" = "Votre localisation nous aide à fournir des coordonnées de prise en charge précises";
+"feature3Title" = "Confidentialité protégée";
+"feature3Desc" = "Votre localisation n'est utilisée que pendant la réservation et jamais stockée de façon permanente";
+"allowLocation" = "Autoriser la localisation";
+"openSettings" = "Ouvrir les paramètres";
+"continue" = "Continuer";
+"cancel" = "Annuler";
+
+/* Ride Search Interface */
+"findRide" = "Trouver une course";
+"pickupLocation" = "Lieu de départ";
+"destination" = "Destination";
+"passengers" = "Passagers";
+"serviceType" = "Type";
+"economy" = "Éco";
+"standard" = "Std";
+"premium" = "Prem";
+"searching" = "Recherche...";
+"findDrivers" = "Chercher";
+"estimatedFare" = "Tarif est.";
+"distance" = "Distance";
+
+/* Validation Messages */
+"pickupRequired" = "Lieu de départ requis";
+"destinationRequired" = "Destination requise";
+
+/* Error Messages - Search */
+"noDriversFound" = "Aucun conducteur disponible";
+"searchError" = "Erreur de recherche";
+"locationError" = "Erreur de localisation";
+"addressNotFound" = "Adresse introuvable";
+"invalidAddress" = "Adresse invalide";
+"invalidLocation" = "Position invalide";
+
+/* Error Messages - Location */
+"error.permissionDenied" = "Permission de localisation refusée";
+"error.locationDisabled" = "Services de localisation désactivés";
+"error.geocodingFailed" = "Adresse introuvable";
+"error.invalidAddress" = "Adresse invalide";
+"error.outsideServiceArea" = "Adresse hors zone de service";
+"error.timeout" = "Délai de localisation dépassé";
+"error.unknown" = "Erreur de localisation";
+
+/* Error Messages - Ride */
+"rideError.networkError" = "Échec de la connexion réseau";
+"rideError.timeout" = "Délai de recherche dépassé";
+"rideError.noDriversFound" = "Aucun conducteur disponible dans votre région";
+"rideError.invalidLocation" = "Lieu de départ ou destination invalide";
+"rideError.serviceUnavailable" = "Service temporairement indisponible";
+"rideError.unknown" = "Service temporairement indisponible";
+
+/* GPS Features */
+"gpsEnabled" = "GPS";
+"gpsDisabled" = "Pas de GPS";
+"enableGpsMessage" = "Activez le GPS pour de meilleurs services de localisation";
+"enableGps" = "Activer";
+"currentLocation" = "Position actuelle";
+"fallbackLocation" = "Ottawa, ON";
+"tapToCustomize" = "Appui long pour modifier";
+"usingGpsLocation" = "Position GPS utilisée";
+"customPickupEnabled" = "Départ personnalisé activé";
+
+/* Pinpoint Mode */
+"searchMode" = "Recherche";
+"pinpointMode" = "Sur la carte";
+"selectOnMap" = "Choisir sur la carte";
+"confirmLocation" = "Confirmer la position";
+"resolvingAddress" = "Recherche de l'adresse...";
+"dragMapToChoose" = "Déplacez la carte pour choisir";

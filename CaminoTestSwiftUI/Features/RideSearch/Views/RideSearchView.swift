@@ -9,6 +9,7 @@ struct RideSearchView: View {
     @StateObject private var viewModel = RideSearchViewModel()
     @StateObject private var locationService = LocationService()
     @Environment(\.presentationMode) var presentationMode
+    @EnvironmentObject var localizationManager: LocalizationManager
     
     
     // États pour coordonnées Mapbox
@@ -291,42 +292,16 @@ struct RideSearchView: View {
     
     // MARK: - Toggle de langue
     private var languageToggleButtons: some View {
-        HStack(spacing: 0) {
-            Button(action: {
-                viewModel.currentLanguage = "en"
-            }) {
-                Text("EN")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(viewModel.currentLanguage == "en" ? .white : .gray)
-                    .frame(width: 40, height: 28)
-                    .background(viewModel.currentLanguage == "en" ? Color.red : Color.clear)
-            }
-            Button(action: {
-                viewModel.currentLanguage = "fr"
-            }) {
-                Text("FR")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(viewModel.currentLanguage == "fr" ? .white : .gray)
-                    .frame(width: 40, height: 28)
-                    .background(viewModel.currentLanguage == "fr" ? Color.red : Color.clear)
-            }
-        }
-        .background(Color.white)
-        .cornerRadius(14)
-        .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(Color.gray.opacity(0.3), lineWidth: 1)
-        )
-        .shadow(radius: 2)
+        LanguageToggle()
+            .shadow(radius: 2)
     }
-    
     // MARK: - Contenu bottom sheet simplifié
     private var bottomSheetContent: some View {
         ScrollView {
             VStack(spacing: 12) {
                 // Titre avec indicateur mode
                 HStack {
-                    Text(viewModel.translations["findRide"] ?? "Find a Ride")
+                    Text("findRide".localized)
                         .font(.title3)
                         .fontWeight(.bold)
                         .foregroundColor(.black)
@@ -387,11 +362,11 @@ struct RideSearchView: View {
         HStack {
             Image(systemName: "location.slash")
                 .foregroundColor(.red)
-            Text(viewModel.translations["enableGpsMessage"] ?? "Enable GPS for better location services")
+            Text("enableGpsMessage".localized)
                 .font(.caption)
                 .foregroundColor(.red)
             Spacer()
-            Button(viewModel.translations["enableGps"] ?? "Enable") {
+            Button("enableGps".localized) {
                 viewModel.requestLocationPermission()
             }
             .font(.caption)
@@ -416,7 +391,7 @@ struct RideSearchView: View {
                         }
                     }
                 ),
-                placeholder: viewModel.translations["pickupLocation"] ?? "Pickup Location",
+                placeholder: "pickupLocation".localized,
                 errorMessage: viewModel.pickupError,
                 isPickup: true,
                 fieldType: .pickup,
@@ -439,7 +414,7 @@ struct RideSearchView: View {
             if !viewModel.isPinpointMode {
                 CentralizedLocationField(
                     text: $viewModel.destinationAddress,
-                    placeholder: viewModel.translations["destination"] ?? "Destination",
+                    placeholder: "destination".localized,
                     errorMessage: viewModel.destinationError,
                     isPickup: false,
                     fieldType: .destination,
@@ -461,11 +436,11 @@ struct RideSearchView: View {
             Image(systemName: "location.fill")
                 .font(.caption)
                 .foregroundColor(.red)
-            Text(viewModel.translations["usingGpsLocation"] ?? "Using GPS location")
+            Text("usingGpsLocation".localized)
                 .font(.caption2)
                 .foregroundColor(.gray)
             Spacer()
-            Text(viewModel.translations["tapToCustomize"] ?? "Long press to customize")
+            Text("tapToCustomize".localized)
                 .font(.caption2)
                 .foregroundColor(.gray)
         }
@@ -478,7 +453,7 @@ struct RideSearchView: View {
         HStack(spacing: 16) {
             // Passagers
             HStack(spacing: 4) {
-                Text(viewModel.translations["passengers"] ?? "Passengers")
+                Text("passengers".localized)
                     .font(.caption)
                     .foregroundColor(.gray)
                 HStack(spacing: 8) {
@@ -516,9 +491,9 @@ struct RideSearchView: View {
             
             // Type de service
             Picker("", selection: $viewModel.serviceType) {
-                Text(viewModel.translations["economy"] ?? "Eco").tag("economy")
-                Text(viewModel.translations["standard"] ?? "Std").tag("standard")
-                Text(viewModel.translations["premium"] ?? "Prem").tag("premium")
+                Text("economy".localized)
+                Text("standard".localized)
+                Text("premium".localized)
             }
             .pickerStyle(SegmentedPickerStyle())
             .frame(maxWidth: 160)
@@ -539,8 +514,8 @@ struct RideSearchView: View {
                         .scaleEffect(0.8)
                 }
                 Text(viewModel.isSearching ?
-                     (viewModel.translations["searching"] ?? "Searching...") :
-                        (viewModel.translations["findDrivers"] ?? "Find Drivers"))
+                     ("searching".localized) :
+                        ("findDrivers".localized))
                 .fontWeight(.semibold)
             }
         }
@@ -556,7 +531,7 @@ struct RideSearchView: View {
     private var estimationSection: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text(viewModel.translations["estimatedFare"] ?? "Est. Fare")
+                Text("estimatedFare".localized)
                     .font(.caption)
                     .foregroundColor(.gray)
                 Text(viewModel.estimatedFare)
@@ -566,7 +541,7 @@ struct RideSearchView: View {
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
-                Text(viewModel.translations["distance"] ?? "Distance")
+                Text("distance".localized)
                     .font(.caption)
                     .foregroundColor(.gray)
                 Text(viewModel.estimatedDistance)

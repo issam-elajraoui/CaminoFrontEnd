@@ -153,20 +153,7 @@ public class LocationService: NSObject, LocationServiceProtocol {
             locationManager.stopUpdatingLocation()
         }
     }
-    
-//    // MARK: - Géocodage non-bloquant via Actor
-//    public func geocodeAddress(_ address: String) async throws -> CLLocationCoordinate2D {
-//        let searchCenter = await MainActor.run { () -> CLLocationCoordinate2D in
-//            return currentLocation ?? Self.ottawaFallbackLocation
-//        }
-//        
-//        return try await operationsActor.performGeocode(
-//            address: address,
-//            searchCenter: searchCenter
-//        )
-//    }
-    
-    
+
     
     // MARK: - Obtenir position actuelle non-bloquante
     func getCurrentLocationOnce() async throws -> CLLocationCoordinate2D {

@@ -10,10 +10,9 @@ import CoreLocation
 // MARK: - Vue de demande de permissions GPS
 struct LocationPermissionView: View {
     @EnvironmentObject var locationService: LocationService
+    @EnvironmentObject var localizationManager: LocalizationManager
 
     
-    @State private var currentLanguage = "en"
-//    @State private var showSettings = false
     
     let onPermissionGranted: () -> Void
     let onCancel: () -> Void
@@ -80,8 +79,8 @@ struct LocationPermissionView: View {
             
             Spacer()
             
-            // Toggle langue
-            LanguageToggle(currentLanguage: $currentLanguage)
+
+            LanguageToggle()
         }
         .padding(.horizontal, 20)
         .padding(.top, 20)
@@ -103,13 +102,13 @@ struct LocationPermissionView: View {
             
             // Titre principal
             VStack(spacing: 8) {
-                Text(translations["title"] ?? "Location Access Required")
+                Text("title".localized)
                     .font(.title)
                     .fontWeight(.bold)
                     .foregroundColor(.primary)
                     .multilineTextAlignment(.center)
                 
-                Text(translations["subtitle"] ?? "To find nearby drivers")
+                Text("subtitle".localized)
                     .font(.subheadline)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
@@ -123,20 +122,20 @@ struct LocationPermissionView: View {
             // Points clés
             featureRow(
                 icon: "car.circle.fill",
-                title: translations["feature1Title"] ?? "Find nearby drivers",
-                description: translations["feature1Desc"] ?? "We need your location to match you with available drivers in your area"
+                title: "feature1Title".localized,
+                description: "feature1Desc".localized
             )
             
             featureRow(
                 icon: "map.circle.fill",
-                title: translations["feature2Title"] ?? "Accurate pickup",
-                description: translations["feature2Desc"] ?? "Your location helps us provide precise pickup coordinates"
+                title: "feature2Title".localized,
+                description: "feature2Desc".localized
             )
             
             featureRow(
                 icon: "shield.circle.fill",
-                title: translations["feature3Title"] ?? "Privacy protected",
-                description: translations["feature3Desc"] ?? "Your location is only used during ride booking and never stored permanently"
+                title: "feature3Title".localized,
+                description: "feature3Desc".localized
             )
         }
         .padding(.horizontal, 8)
@@ -201,7 +200,7 @@ struct LocationPermissionView: View {
         Button(action: {
             onCancel()
         }) {
-            Text(translations["cancel"] ?? "Cancel")
+            Text("cancel".localized)
                 .fontWeight(.medium)
                 .foregroundColor(.secondary)
         }
@@ -212,13 +211,13 @@ struct LocationPermissionView: View {
     private var primaryButtonText: String {
         switch locationService.authorizationStatus {
         case .notDetermined:
-            return translations["allowLocation"] ?? "Allow Location Access"
+            return "allowLocation".localized
         case .denied, .restricted:
-            return translations["openSettings"] ?? "Open Settings"
+            return "openSettings".localized
         case .authorizedWhenInUse, .authorizedAlways:
-            return translations["continue"] ?? "Continue"
+            return "continue".localized
         @unknown default:
-            return translations["allowLocation"] ?? "Allow Location Access"
+            return "allowLocation".localized
         }
     }
     
@@ -236,40 +235,40 @@ struct LocationPermissionView: View {
     }
     
     // MARK: - Traductions
-    private var translations: [String: String] {
-        if currentLanguage == "fr" {
-            return [
-                "title": "Accès à la localisation requis",
-                "subtitle": "Pour trouver des conducteurs à proximité",
-                "feature1Title": "Trouver des conducteurs",
-                "feature1Desc": "Nous avons besoin de votre localisation pour vous connecter avec des conducteurs disponibles dans votre région",
-                "feature2Title": "Prise en charge précise",
-                "feature2Desc": "Votre localisation nous aide à fournir des coordonnées de prise en charge précises",
-                "feature3Title": "Confidentialité protégée",
-                "feature3Desc": "Votre localisation n'est utilisée que pendant la réservation et jamais stockée de façon permanente",
-                "allowLocation": "Autoriser la localisation",
-                "openSettings": "Ouvrir les paramètres",
-                "continue": "Continuer",
-                "cancel": "Annuler"
-            ]
-        } else {
-            return [
-                "title": "Location Access Required",
-                "subtitle": "To find nearby drivers",
-                "feature1Title": "Find nearby drivers",
-                "feature1Desc": "We need your location to match you with available drivers in your area",
-                "feature2Title": "Accurate pickup",
-                "feature2Desc": "Your location helps us provide precise pickup coordinates",
-                "feature3Title": "Privacy protected",
-                "feature3Desc": "Your location is only used during ride booking and never stored permanently",
-                "allowLocation": "Allow Location Access",
-                "openSettings": "Open Settings",
-                "continue": "Continue",
-                "cancel": "Cancel"
-            ]
-        }
-    }
-    
+//    private var translations: [String: String] {
+//        if localizationManager.currentLanguage == "fr" {
+//            return [
+//                "title": "Accès à la localisation requis",
+//                "subtitle": "Pour trouver des conducteurs à proximité",
+//                "feature1Title": "Trouver des conducteurs",
+//                "feature1Desc": "Nous avons besoin de votre localisation pour vous connecter avec des conducteurs disponibles dans votre région",
+//                "feature2Title": "Prise en charge précise",
+//                "feature2Desc": "Votre localisation nous aide à fournir des coordonnées de prise en charge précises",
+//                "feature3Title": "Confidentialité protégée",
+//                "feature3Desc": "Votre localisation n'est utilisée que pendant la réservation et jamais stockée de façon permanente",
+//                "allowLocation": "Autoriser la localisation",
+//                "openSettings": "Ouvrir les paramètres",
+//                "continue": "Continuer",
+//                "cancel": "Annuler"
+//            ]
+//        } else {
+//            return [
+//                "title": "Location Access Required",
+//                "subtitle": "To find nearby drivers",
+//                "feature1Title": "Find nearby drivers",
+//                "feature1Desc": "We need your location to match you with available drivers in your area",
+//                "feature2Title": "Accurate pickup",
+//                "feature2Desc": "Your location helps us provide precise pickup coordinates",
+//                "feature3Title": "Privacy protected",
+//                "feature3Desc": "Your location is only used during ride booking and never stored permanently",
+//                "allowLocation": "Allow Location Access",
+//                "openSettings": "Open Settings",
+//                "continue": "Continue",
+//                "cancel": "Cancel"
+//            ]
+//        }
+//    }
+//    
     // MARK: - Méthodes d'action
     
     private func handlePrimaryAction() {
@@ -332,6 +331,7 @@ struct LocationPermissionView_Previews: PreviewProvider {
             }
         )
         .environmentObject(LocationService())
+        .environmentObject(LocalizationManager.shared)
     }
 }
 

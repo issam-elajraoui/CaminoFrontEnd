@@ -1,0 +1,82 @@
+//
+//  Localizable.strings
+//  CaminoTestSwiftUI
+//
+//  Created by Issam EL MOUJAHID on 2025-09-29.
+//
+
+/* Location Permission View */
+"title" = "Location Access Required";
+"subtitle" = "To find nearby drivers";
+"feature1Title" = "Find nearby drivers";
+"feature1Desc" = "We need your location to match you with available drivers in your area";
+"feature2Title" = "Accurate pickup";
+"feature2Desc" = "Your location helps us provide precise pickup coordinates";
+"feature3Title" = "Privacy protected";
+"feature3Desc" = "Your location is only used during ride booking and never stored permanently";
+"allowLocation" = "Allow Location Access";
+"openSettings" = "Open Settings";
+"continue" = "Continue";
+"cancel" = "Cancel";
+
+/* Ride Search Interface */
+"findRide" = "Find a Ride";
+"pickupLocation" = "Pickup Location";
+"destination" = "Destination";
+"passengers" = "Passengers";
+"serviceType" = "Type";
+"economy" = "Eco";
+"standard" = "Std";
+"premium" = "Prem";
+"searching" = "Searching...";
+"findDrivers" = "Find Drivers";
+"estimatedFare" = "Est. Fare";
+"distance" = "Distance";
+
+/* Validation Messages */
+"pickupRequired" = "Pickup location required";
+"destinationRequired" = "Destination required";
+
+/* Error Messages - Search */
+"noDriversFound" = "No drivers available";
+"searchError" = "Search failed";
+"locationError" = "Location error";
+"addressNotFound" = "Address not found";
+"invalidAddress" = "Invalid address";
+"invalidLocation" = "Invalid location";
+
+/* Error Messages - Location */
+"error.permissionDenied" = "Location permission denied";
+"error.locationDisabled" = "Location services disabled";
+"error.geocodingFailed" = "Address not found";
+"error.invalidAddress" = "Invalid address";
+"error.outsideServiceArea" = "Address outside service area";
+"error.timeout" = "Location request timeout";
+"error.unknown" = "Location error";
+
+/* Error Messages - Ride */
+"rideError.networkError" = "Network connection failed";
+"rideError.timeout" = "Search timeout";
+"rideError.noDriversFound" = "No drivers available in your area";
+"rideError.invalidLocation" = "Invalid pickup or destination";
+"rideError.serviceUnavailable" = "Service temporarily unavailable";
+"rideError.unknown" = "Service temporarily unavailable";
+
+/* GPS Features */
+"gpsEnabled" = "GPS";
+"gpsDisabled" = "No GPS";
+"enableGpsMessage" = "Enable GPS for better location services";
+"enableGps" = "Enable";
+"currentLocation" = "Current Location";
+"fallbackLocation" = "Ottawa, ON";
+"tapToCustomize" = "Long press to customize";
+"usingGpsLocation" = "Using GPS location";
+"customPickupEnabled" = "Custom pickup enabled";
+
+/* Pinpoint Mode */
+"searchMode" = "Search";
+"pinpointMode" = "On map";
+"selectOnMap" = "Select on map";
+"confirmLocation" = "Confirm location";
+"resolvingAddress" = "Finding address...";
+"dragMapToChoose" = "Drag map to choose";
