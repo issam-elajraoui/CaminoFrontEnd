@@ -84,7 +84,7 @@ struct CentralizedLocationField: View {
                 if isGPSMode {
                     Image(systemName: "location.fill")
                         .font(.system(size: 12))
-                        .foregroundColor(.green)
+                        .foregroundColor(.black)
                 }
             }
             .padding(.horizontal, 10)
@@ -109,9 +109,9 @@ struct CentralizedLocationField: View {
             
             //  Message informatif GPS
             if isGPSMode && isPickup {
-                Text("📍 Position GPS utilisée • Appui long pour modifier")
+                Text("tapToCustomize".localized)
                     .font(.caption2)
-                    .foregroundColor(.green)
+                    .foregroundColor(.gray)
                     .padding(.leading, 18)
                     .padding(.top, 2)
             }
@@ -170,15 +170,15 @@ struct CentralizedLocationField: View {
     // MARK: -  Couleurs adaptatives selon mode et thème canadien
     private var circleColor: Color {
         if isGPSMode {
-            return .green // GPS actif
+            return .black // GPS actif
         } else {
-            return isPickup ? Color.green : Color.red // Normal
+            return isPickup ? Color.gray.opacity(0.5) : Color.red // Normal
         }
     }
     
     private var fieldBackgroundColor: Color {
         if isGPSMode {
-            return Color.green.opacity(0.05) // Fond légèrement vert en mode GPS
+            return Color.gray.opacity(0.05) // Fond légèrement vert en mode GPS
         } else {
             return Color.gray.opacity(0.1) // Fond normal
         }
