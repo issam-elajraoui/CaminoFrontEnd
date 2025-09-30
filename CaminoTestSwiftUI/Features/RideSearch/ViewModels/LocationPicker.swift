@@ -10,32 +10,28 @@ import Foundation
 import CoreLocation
 import Combine
 
+
 // MARK: - Gestion du pickup GPS vs Custom
 @MainActor
 class LocationPicker: ObservableObject {
     
     // MARK: - Published Properties
-    @Published var useCustomPickup: Bool = false {
+    @Published var isRideForSomeoneElse: Bool = false {
         didSet {
-            handlePickupModeChange()
+            handleRideModeChange()
         }
     }
     @Published var isPickupFromGPS: Bool = true
     @Published var gpsPickupAddress: String = ""
-    @Published var customPickupAddress: String = ""
+    @Published var pickupAddress: String = ""
     @Published var pickupCoordinate: CLLocationCoordinate2D?
-    
-    // MARK: - Computed Property
-    var displayPickupAddress: String {
-        return useCustomPickup ? customPickupAddress : gpsPickupAddress
-    }
-    
-    // MARK: - Dependencies
-    private var cancellables = Set<AnyCancellable>()
     
     // MARK: - Callbacks
     var onPickupChanged: ((CLLocationCoordinate2D?) -> Void)?
     var onClearErrors: (() -> Void)?
+    
+    // MARK: - Dependencies
+    private var cancellables = Set<AnyCancellable>()
     
     // MARK: - Setup
     func observeLocationService(_ locationService: LocationService) {
@@ -47,43 +43,38 @@ class LocationPicker: ObservableObject {
             .store(in: &cancellables)
     }
     
-    // MARK: - GPS Location Updates (CODE EXTRAIT TEL QUEL)
+    // MARK: - GPS Location Updates
     private func handleGPSLocationUpdate(_ location: CLLocationCoordinate2D?) {
-        print("🌐 LocationPicker.handleGPSLocationUpdate called with: \(String(describing: location))")
-        
         guard let location = location,
               MapboxConfig.isValidCoordinate(location) else {
             handleGPSUnavailable()
             return
         }
         
-        if !useCustomPickup {
-            print("🎯 LocationPicker will call updateGPSPickup...")
+        if !isRideForSomeoneElse && isPickupFromGPS {
             updateGPSPickup(location)
         }
     }
     
     private func updateGPSPickup(_ coordinate: CLLocationCoordinate2D) {
-        print("📍 LocationPicker.updateGPSPickup called for: \(coordinate)")
         pickupCoordinate = coordinate
         isPickupFromGPS = true
         
         Task {
             do {
-                print("🔄 LocationPicker calling GeocodeManager...")
-                
                 let address = try await GeocodeManager.shared.reverseGeocode(coordinate)
-                
                 await MainActor.run {
-                    gpsPickupAddress = address.isEmpty ?
-                        "Position actuelle" :
-                        address
-                    print("✅ LocationPicker got address: '\(gpsPickupAddress)'")
+                    gpsPickupAddress = address.isEmpty ? "Position actuelle" : address
+                    if !isRideForSomeoneElse {
+                        pickupAddress = gpsPickupAddress
+                    }
                 }
             } catch {
-                print("❌ LocationPicker geocoding failed: \(error)")
                 await MainActor.run {
                     gpsPickupAddress = "Position actuelle"
+                    if !isRideForSomeoneElse {
+                        pickupAddress = gpsPickupAddress
+                    }
                 }
             }
         }
@@ -94,56 +85,42 @@ class LocationPicker: ObservableObject {
     private func handleGPSUnavailable() {
         let ottawaCoordinate = CLLocationCoordinate2D(latitude: 45.4215, longitude: -75.6972)
         
-        if !useCustomPickup {
+        if !isRideForSomeoneElse && isPickupFromGPS {
             pickupCoordinate = ottawaCoordinate
             isPickupFromGPS = false
             gpsPickupAddress = "fallbackLocation".localized
+            pickupAddress = gpsPickupAddress
             onPickupChanged?(ottawaCoordinate)
         }
     }
     
-    // MARK: - Mode Change (CODE EXTRAIT TEL QUEL)
-    private func handlePickupModeChange() {
-        if useCustomPickup {
+    // MARK: - Mode Change
+    private func handleRideModeChange() {
+        if isRideForSomeoneElse {
             isPickupFromGPS = false
-            
-            if customPickupAddress.isEmpty {
-                pickupCoordinate = nil
-                onPickupChanged?(nil)
-            }
+            pickupAddress = ""
+            pickupCoordinate = nil
+            onPickupChanged?(nil)
         } else {
             isPickupFromGPS = true
-            
-            // Réutiliser l'adresse GPS si disponible
             if !gpsPickupAddress.isEmpty, let coord = pickupCoordinate {
+                pickupAddress = gpsPickupAddress
                 onPickupChanged?(coord)
             } else {
                 handleGPSUnavailable()
             }
         }
-        
         onClearErrors?()
     }
     
-    // MARK: - Public Methods (CODE EXTRAIT TEL QUEL)
-    func enableCustomPickup() {
-        useCustomPickup = true
-        customPickupAddress = gpsPickupAddress
+    // MARK: - Public Methods
+    func setPickupAddress(_ address: String) {
+        pickupAddress = address
     }
     
-    func disableCustomPickup() {
-        useCustomPickup = false
-        customPickupAddress = ""
-    }
-    
-    func setCustomPickupAddress(_ address: String) {
-        customPickupAddress = address
-    }
-    
-    func setCustomPickupCoordinate(_ coordinate: CLLocationCoordinate2D) {
+    func setPickupCoordinate(_ coordinate: CLLocationCoordinate2D) {
         guard MapboxConfig.isValidCoordinate(coordinate) else { return }
         pickupCoordinate = coordinate
-        isPickupFromGPS = false
         onPickupChanged?(coordinate)
     }
 }

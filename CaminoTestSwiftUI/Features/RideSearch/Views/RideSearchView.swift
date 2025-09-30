@@ -3,28 +3,26 @@ import Foundation
 import MapKit
 import Combine
 
+
 // MARK: - Vue principale avec mode automatique selon position bottom sheet
 struct RideSearchView: View {
     private static let maxSuggestions = 7
-    //@StateObject private var viewModel = RideSearchViewModel()
     @StateObject private var viewModel = RideSearchCoordinator()
     @StateObject private var locationService = LocationService()
     @Environment(\.presentationMode) var presentationMode
     @EnvironmentObject var localizationManager: LocalizationManager
     
-    
     // États pour coordonnées Mapbox
     @State private var mapboxCenter: CLLocationCoordinate2D = CLLocationCoordinate2D(latitude: 45.4215, longitude: -75.6972)
-    
     @State private var cancellables = Set<AnyCancellable>()
     
     // États bottom sheet
-    @State private var bottomSheetHeight: CGFloat = 0.7  // 70% par défaut = mode recherche
+    @State private var bottomSheetHeight: CGFloat = 0.7
     @State private var isDraggingSheet: Bool = false
     
     // Seuils pour changement automatique de mode
-    private let searchModeThreshold: CGFloat = 0.55  // Au-dessus = mode recherche
-    private let pinpointModeThreshold: CGFloat = 0.55 // En-dessous = mode pinpoint
+    private let searchModeThreshold: CGFloat = 0.55
+    private let pinpointModeThreshold: CGFloat = 0.55
     
     var body: some View {
         GeometryReader { geometry in
@@ -90,20 +88,12 @@ struct RideSearchView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             viewModel.recheckLocationPermissions()
         }
-        
         .onDisappear {
             viewModel.pinpoint.cleanupPinpointTasks()
-                }
-        
-        
-        // NOUVEAU - Observer les changements de position du sheet
+        }
         .onChange(of: bottomSheetHeight) { oldValue, newValue in
-            print("🔵 Sheet height changed: \(oldValue) → \(newValue)")
-            print("🔵 pinpointModeThreshold: \(pinpointModeThreshold)")
-            // Éviter updates trop fréquents
             guard abs(newValue - oldValue) > 0.05 else { return }
             
-            // Debounce les changements
             Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(100))
                 
@@ -118,10 +108,8 @@ struct RideSearchView: View {
                 }
             }
         }
-        
         .onChange(of: isDraggingSheet) { _, isDragging in
             if !isDragging {
-                // Fin du drag, attendre stabilisation
                 Task { @MainActor in
                     try? await Task.sleep(for: .milliseconds(200))
                     
@@ -137,45 +125,26 @@ struct RideSearchView: View {
                 }
             }
         }
-        
     }
     
     // MARK: - Gestion automatique du changement de mode
     @State private var lastSheetUpdate: Date = Date.distantPast
 
-//    private mutating func handleSheetPositionChange(_ height: CGFloat) {
-//        // Throttling des updates
-//        let now = Date()
-//        guard now.timeIntervalSince(lastSheetUpdate) > 0.2 else { return }
-//        lastSheetUpdate = now
-//        
-//        if height <= pinpointModeThreshold && !viewModel.pinpoint.isPinpointMode {
-//            activatePinpointMode()
-//        } else if height > searchModeThreshold && viewModel.pinpoint.isPinpointMode {
-//            deactivatePinpointMode()
-//        }
-//    }
-
     private func activatePinpointMode() {
-        print("🟢 RideSearchView: Activating pinpoint mode")
         withAnimation(.easeInOut(duration: 0.3)) {
-            viewModel.enablePinpointMode(for: .destination)
+            viewModel.enablePinpointMode(for: viewModel.activeField)
         }
-        print("🟢 RideSearchView: Pinpoint mode activated, isPinpointMode = \(viewModel.pinpoint.isPinpointMode)")
     }
     
     private func deactivatePinpointMode() {
-        print("🔴 RideSearchView: Deactivating pinpoint mode")
         withAnimation(.easeInOut(duration: 0.3)) {
             viewModel.disablePinpointMode()
         }
-        print("🔴 RideSearchView: Pinpoint mode deactivated")
     }
     
     // MARK: - Carte Mapbox plein écran
     private var mapboxFullScreenSection: some View {
         ZStack {
-            // Carte Mapbox avec binding pour le mode pinpoint
             MapboxWrapper(
                 center: $mapboxCenter,
                 annotations: $viewModel.annotations,
@@ -185,18 +154,16 @@ struct RideSearchView: View {
                 onMapTap: { coordinate in
                     viewModel.handleMapTap(at: CGPoint(x: 0, y: 0))
                 },
-                onPinpointMove: { coordinate in  // NOUVEAU callback
+                onPinpointMove: { coordinate in
                     viewModel.onMapCenterChangedSimple(coordinate: coordinate)
                 }
             )
             
-            // Reste du code identique
             PinpointIndicator(
                 isActive: viewModel.pinpoint.isPinpointMode,
                 isResolving: viewModel.pinpoint.isResolvingAddress
             )
             
-            // Overlay bouton GPS
             VStack {
                 HStack {
                     gpsLocationButton
@@ -213,7 +180,6 @@ struct RideSearchView: View {
     private func pinpointInstructions(geometry: GeometryProxy) -> some View {
         VStack {
             VStack(spacing: 12) {
-                // Instructions simples
                 HStack {
                     Spacer()
                     Text("Déplacez la carte pour choisir votre destination")
@@ -228,7 +194,6 @@ struct RideSearchView: View {
                     Spacer()
                 }
                 
-                // Affichage adresse en temps réel
                 if viewModel.pinpoint.isResolvingAddress || !viewModel.pinpoint.pinpointAddress.isEmpty {
                     HStack {
                         Spacer()
@@ -267,7 +232,6 @@ struct RideSearchView: View {
         .transition(.opacity)
     }
 
-
     // MARK: - Bouton GPS
     private var gpsLocationButton: some View {
         Button(action: {
@@ -296,6 +260,7 @@ struct RideSearchView: View {
         LanguageToggle()
             .shadow(radius: 2)
     }
+    
     // MARK: - Contenu bottom sheet simplifié
     private var bottomSheetContent: some View {
         ScrollView {
@@ -309,7 +274,6 @@ struct RideSearchView: View {
                     
                     Spacer()
                     
-                    // Indicateur discret du mode actuel
                     HStack(spacing: 4) {
                         Image(systemName: viewModel.pinpoint.isPinpointMode ? "map.fill" : "magnifyingglass")
                             .font(.caption)
@@ -327,14 +291,16 @@ struct RideSearchView: View {
                     gpsDisabledWarning
                 }
                 
+                // Toggle "Pour moi / Pour quelqu'un d'autre"
+                rideModeToggle
+                
                 // Champs d'adresse
                 addressFieldsSection
                 
                 // Indicateur mode pickup GPS
-                if !viewModel.locationPicker.useCustomPickup && viewModel.locationPicker.isPickupFromGPS {
+                if !viewModel.locationPicker.isRideForSomeoneElse && viewModel.locationPicker.isPickupFromGPS {
                     gpsPickupIndicator
                 }
-                
                 
                 // Options compactes
                 optionsSection
@@ -380,16 +346,46 @@ struct RideSearchView: View {
         .padding(.horizontal, 20)
     }
     
+    // MARK: - Toggle mode course (NOUVEAU)
+    private var rideModeToggle: some View {
+        HStack(spacing: 12) {
+            Button(action: {
+                viewModel.locationPicker.isRideForSomeoneElse = false
+            }) {
+                HStack(spacing: 4) {
+                    Image(systemName: viewModel.locationPicker.isRideForSomeoneElse ? "circle" : "checkmark.circle.fill")
+                        .font(.caption)
+                    Text("Pour moi")
+                        .font(.caption)
+                }
+                .foregroundColor(viewModel.locationPicker.isRideForSomeoneElse ? .gray : .red)
+            }
+            
+            Button(action: {
+                viewModel.locationPicker.isRideForSomeoneElse = true
+            }) {
+                HStack(spacing: 4) {
+                    Image(systemName: viewModel.locationPicker.isRideForSomeoneElse ? "checkmark.circle.fill" : "circle")
+                        .font(.caption)
+                    Text("Pour quelqu'un d'autre")
+                        .font(.caption)
+                }
+                .foregroundColor(viewModel.locationPicker.isRideForSomeoneElse ? .red : .gray)
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.bottom, 4)
+    }
+    
     private var addressFieldsSection: some View {
         VStack(spacing: 8) {
             // Champ pickup (toujours visible)
             CentralizedLocationField(
                 text: Binding(
-                    get: { viewModel.displayPickupAddress },
+                    get: { viewModel.locationPicker.pickupAddress },
                     set: { newValue in
-                        if viewModel.locationPicker.useCustomPickup {
-                            viewModel.onLocationTextChanged(newValue, for: .pickup)
-                        }
+                        viewModel.locationPicker.setPickupAddress(newValue)
+                        viewModel.onLocationTextChanged(newValue, for: .pickup)
                     }
                 ),
                 placeholder: "pickupLocation".localized,
@@ -398,17 +394,12 @@ struct RideSearchView: View {
                 fieldType: .pickup,
                 activeField: $viewModel.activeField,
                 onTextChange: { newText in
-                    if viewModel.locationPicker.useCustomPickup {
-                        viewModel.onLocationTextChanged(newText, for: .pickup)
-                    }
+                    viewModel.onLocationTextChanged(newText, for: .pickup)
                 },
                 onLocationSelected: { location in
                     viewModel.setPickupLocation(location)
                 },
-                isGPSMode: !viewModel.locationPicker.useCustomPickup,
-                onLongPress: {
-                    viewModel.enableCustomPickup()
-                }
+                showGPSIndicator: !viewModel.locationPicker.isRideForSomeoneElse && viewModel.locationPicker.isPickupFromGPS
             )
             
             // Champ destination (masqué en mode pinpoint)
@@ -441,14 +432,10 @@ struct RideSearchView: View {
                 .font(.caption2)
                 .foregroundColor(.gray)
             Spacer()
-            Text("tapToCustomize".localized)
-                .font(.caption2)
-                .foregroundColor(.gray)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 4)
     }
-    
 
     private var optionsSection: some View {
         HStack(spacing: 16) {
@@ -593,7 +580,6 @@ struct RideSearchView: View {
     }
     
     // Observer changements position pour Mapbox
-    
     private func setupMapboxObserver() {
         viewModel.$annotations
             .removeDuplicates()
@@ -620,6 +606,4 @@ struct RideSearchView: View {
             }
             .store(in: &cancellables)
     }
-    
-
 }

@@ -51,7 +51,7 @@ class RideSearchCoordinator: ObservableObject {
     
     // MARK: - Computed Properties
     var displayPickupAddress: String {
-        return locationPicker.displayPickupAddress
+        return locationPicker.pickupAddress
     }
     
     var canSearch: Bool {
@@ -77,21 +77,38 @@ class RideSearchCoordinator: ObservableObject {
         }
         
         // Pinpoint callbacks
-        pinpoint.onDestinationChanged = { [weak self] coordinate in
-            self?.handlePinpointDestinationChanged(coordinate)
+        pinpoint.onLocationChanged = { [weak self] coordinate, field in
+            self?.handlePinpointLocationChanged(coordinate, for: field)
         }
+        
+        // Observer pinpointAddress pour mettre à jour le bon champ
+        pinpoint.$pinpointAddress
+            .filter { !$0.isEmpty && $0 != "Position invalide" && $0 != "Adresse introuvable" }
+            .sink { [weak self] address in
+                guard let self = self else { return }
+                switch self.pinpoint.targetField {
+                case .pickup:
+                    self.locationPicker.setPickupAddress(address)
+                    self.pickupAddress = address
+                case .destination:
+                    self.destinationAddress = address
+                case .none:
+                    break
+                }
+            }
+            .store(in: &cancellables)
         
         // Observer showSuggestions from addressSearch
         addressSearch.$suggestions
             .map { !$0.isEmpty }
             .assign(to: &$showSuggestions)
         
-        
-        
-        pinpoint.$pinpointAddress
-            .filter { !$0.isEmpty && $0 != "Position invalide" && $0 != "Adresse introuvable" }
-            .sink { [weak self] address in
-                self?.destinationAddress = address
+        $activeField
+            .sink { [weak self] newActiveField in
+                guard let self = self else { return }
+                if self.pinpoint.isPinpointMode && newActiveField != .none {
+                    self.pinpoint.targetField = newActiveField
+                }
             }
             .store(in: &cancellables)
     }
@@ -181,11 +198,9 @@ class RideSearchCoordinator: ObservableObject {
     func onLocationTextChanged(_ newText: String, for field: ActiveLocationField) {
         switch field {
         case .pickup:
-            if locationPicker.useCustomPickup {
-                locationPicker.setCustomPickupAddress(newText)
-                pickupAddress = newText
-                addressSearch.searchAddress(newText)
-            }
+            locationPicker.setPickupAddress(newText)
+            pickupAddress = newText
+            addressSearch.searchAddress(newText)
             
         case .destination:
             destinationAddress = newText
@@ -209,11 +224,9 @@ class RideSearchCoordinator: ObservableObject {
     private func applySuggestionSelection(_ suggestion: AddressSuggestion) {
         switch activeField {
         case .pickup:
-            if locationPicker.useCustomPickup {
-                locationPicker.setCustomPickupAddress(suggestion.displayText)
-                pickupAddress = suggestion.displayText
-                setPickupLocation(suggestion.coordinate)
-            }
+            locationPicker.setPickupAddress(suggestion.displayText)
+            pickupAddress = suggestion.displayText
+            setPickupLocation(suggestion.coordinate)
             
         case .destination:
             destinationAddress = suggestion.displayText
@@ -231,7 +244,7 @@ class RideSearchCoordinator: ObservableObject {
     // MARK: - Location Management
     func setPickupLocation(_ coordinate: CLLocationCoordinate2D) {
         guard MapboxConfig.isValidCoordinate(coordinate) else { return }
-        locationPicker.setCustomPickupCoordinate(coordinate)
+        locationPicker.setPickupCoordinate(coordinate)
     }
     
     func setDestinationLocation(_ coordinate: CLLocationCoordinate2D) {
@@ -239,7 +252,6 @@ class RideSearchCoordinator: ObservableObject {
         destinationCoordinate = coordinate
         updateMapAnnotations()
         
-        // Trigger route calculation
         route.scheduleRouteCalculation(
             from: locationPicker.pickupCoordinate,
             to: destinationCoordinate
@@ -249,37 +261,28 @@ class RideSearchCoordinator: ObservableObject {
     private func handlePickupChanged(_ coordinate: CLLocationCoordinate2D?) {
         updateMapAnnotations()
         
-        // Update driver search data
         driverSearch.updatePickupData(
             coordinate: coordinate,
-            address: displayPickupAddress,
-            isCustom: locationPicker.useCustomPickup
+            address: locationPicker.pickupAddress,
+            isCustom: locationPicker.isRideForSomeoneElse
         )
         
-        // Trigger route calculation if destination exists
         if destinationCoordinate != nil {
-            route.scheduleRouteCalculation(
-                from: coordinate,
-                to: destinationCoordinate
-            )
+            route.scheduleRouteCalculation(from: coordinate, to: destinationCoordinate)
         }
     }
     
-    private func handlePinpointDestinationChanged(_ coordinate: CLLocationCoordinate2D) {
-        destinationCoordinate = coordinate
-        updateMapAnnotations()
-        
-        // Update driver search data
-        driverSearch.updateDestinationData(
-            coordinate: coordinate,
-            address: pinpoint.pinpointAddress
-        )
-        
-        // Trigger route calculation
-        route.scheduleRouteCalculation(
-            from: locationPicker.pickupCoordinate,
-            to: coordinate
-        )
+    private func handlePinpointLocationChanged(_ coordinate: CLLocationCoordinate2D, for field: ActiveLocationField) {
+        switch field {
+        case .pickup:
+            setPickupLocation(coordinate)
+        case .destination:
+            destinationCoordinate = coordinate
+            updateMapAnnotations()
+            route.scheduleRouteCalculation(from: locationPicker.pickupCoordinate, to: coordinate)
+        case .none:
+            break
+        }
     }
     
     private func updateMapAnnotations() {
@@ -316,17 +319,6 @@ class RideSearchCoordinator: ObservableObject {
         }
     }
     
-    // MARK: - Pickup Mode Management
-    func enableCustomPickup() {
-        locationPicker.enableCustomPickup()
-        activeField = .pickup
-    }
-    
-    func disableCustomPickup() {
-        locationPicker.disableCustomPickup()
-        activeField = .destination
-    }
-    
     // MARK: - Pinpoint Mode
     func enablePinpointMode(for field: ActiveLocationField) {
         pinpoint.enablePinpointMode(for: field)
@@ -341,9 +333,6 @@ class RideSearchCoordinator: ObservableObject {
     
     func onMapCenterChangedSimple(coordinate: CLLocationCoordinate2D) {
         pinpoint.onMapCenterChangedSimple(coordinate: coordinate)
-        
-        // Auto-update destination address
-        // destinationAddress = pinpoint.pinpointAddress
     }
     
     // MARK: - Map Interaction
@@ -401,11 +390,10 @@ class RideSearchCoordinator: ObservableObject {
         activeField = .destination
         showSuggestions = false
         
-        // Update driver search with latest data
         driverSearch.updatePickupData(
             coordinate: locationPicker.pickupCoordinate,
             address: displayPickupAddress,
-            isCustom: locationPicker.useCustomPickup
+            isCustom: locationPicker.isRideForSomeoneElse
         )
         
         driverSearch.updateDestinationData(
