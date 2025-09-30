@@ -27,7 +27,6 @@ public class LocationService: NSObject, LocationServiceProtocol {
     
     // MARK: - Private Properties
     private let locationManager = CLLocationManager()
-//    private let operationsActor = LocationOperationsActor()
     
     // États thread-safe pour les continuations
     private var locationContinuation: CheckedContinuation<CLLocationCoordinate2D, Error>?

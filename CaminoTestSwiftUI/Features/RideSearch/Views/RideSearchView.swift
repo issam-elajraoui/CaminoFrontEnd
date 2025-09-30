@@ -6,7 +6,8 @@ import Combine
 // MARK: - Vue principale avec mode automatique selon position bottom sheet
 struct RideSearchView: View {
     private static let maxSuggestions = 7
-    @StateObject private var viewModel = RideSearchViewModel()
+    //@StateObject private var viewModel = RideSearchViewModel()
+    @StateObject private var viewModel = RideSearchCoordinator()
     @StateObject private var locationService = LocationService()
     @Environment(\.presentationMode) var presentationMode
     @EnvironmentObject var localizationManager: LocalizationManager
@@ -51,20 +52,20 @@ struct RideSearchView: View {
                 }
                 
                 // Instructions pinpoint (seulement si mode pinpoint actif)
-                if viewModel.isPinpointMode {
+                if viewModel.pinpoint.isPinpointMode {
                     pinpointInstructions(geometry: geometry)
                 }
             }
         }
         .environmentObject(locationService)
-        .alert("Error", isPresented: $viewModel.showError) {
+        .alert("Error", isPresented: $viewModel.driverSearch.showError) {
             Button("OK") { }
         } message: {
-            Text(viewModel.userFriendlyErrorMessage)
+            Text(viewModel.driverSearch.userFriendlyErrorMessage)
         }
-        .sheet(isPresented: $viewModel.showDriverResults) {
+        .sheet(isPresented: $viewModel.driverSearch.showDriverResults) {
             DriverResultsView(
-                drivers: viewModel.availableDrivers,
+                drivers: viewModel.driverSearch.availableDrivers,
                 onDriverSelected: { driver in
                     viewModel.selectDriver(driver)
                 }
@@ -91,7 +92,7 @@ struct RideSearchView: View {
         }
         
         .onDisappear {
-                    viewModel.cleanupPinpointTasks()
+            viewModel.pinpoint.cleanupPinpointTasks()
                 }
         
         
@@ -110,9 +111,9 @@ struct RideSearchView: View {
                 guard now.timeIntervalSince(lastSheetUpdate) > 0.2 else { return }
                 lastSheetUpdate = now
                 
-                if newValue <= pinpointModeThreshold && !viewModel.isPinpointMode {
+                if newValue <= pinpointModeThreshold && !viewModel.pinpoint.isPinpointMode {
                     activatePinpointMode()
-                } else if newValue > searchModeThreshold && viewModel.isPinpointMode {
+                } else if newValue > searchModeThreshold && viewModel.pinpoint.isPinpointMode {
                     deactivatePinpointMode()
                 }
             }
@@ -128,9 +129,9 @@ struct RideSearchView: View {
                     guard now.timeIntervalSince(lastSheetUpdate) > 0.2 else { return }
                     lastSheetUpdate = now
                     
-                    if bottomSheetHeight <= pinpointModeThreshold && !viewModel.isPinpointMode {
+                    if bottomSheetHeight <= pinpointModeThreshold && !viewModel.pinpoint.isPinpointMode {
                         activatePinpointMode()
-                    } else if bottomSheetHeight > searchModeThreshold && viewModel.isPinpointMode {
+                    } else if bottomSheetHeight > searchModeThreshold && viewModel.pinpoint.isPinpointMode {
                         deactivatePinpointMode()
                     }
                 }
@@ -148,9 +149,9 @@ struct RideSearchView: View {
 //        guard now.timeIntervalSince(lastSheetUpdate) > 0.2 else { return }
 //        lastSheetUpdate = now
 //        
-//        if height <= pinpointModeThreshold && !viewModel.isPinpointMode {
+//        if height <= pinpointModeThreshold && !viewModel.pinpoint.isPinpointMode {
 //            activatePinpointMode()
-//        } else if height > searchModeThreshold && viewModel.isPinpointMode {
+//        } else if height > searchModeThreshold && viewModel.pinpoint.isPinpointMode {
 //            deactivatePinpointMode()
 //        }
 //    }
@@ -160,7 +161,7 @@ struct RideSearchView: View {
         withAnimation(.easeInOut(duration: 0.3)) {
             viewModel.enablePinpointMode(for: .destination)
         }
-        print("🟢 RideSearchView: Pinpoint mode activated, isPinpointMode = \(viewModel.isPinpointMode)")
+        print("🟢 RideSearchView: Pinpoint mode activated, isPinpointMode = \(viewModel.pinpoint.isPinpointMode)")
     }
     
     private func deactivatePinpointMode() {
@@ -178,9 +179,9 @@ struct RideSearchView: View {
             MapboxWrapper(
                 center: $mapboxCenter,
                 annotations: $viewModel.annotations,
-                route: $viewModel.currentRoute,
+                route: $viewModel.route.currentRoute,
                 showUserLocation: $viewModel.showUserLocation,
-                isPinpointMode: $viewModel.isPinpointMode,
+                isPinpointMode: $viewModel.pinpoint.isPinpointMode,
                 onMapTap: { coordinate in
                     viewModel.handleMapTap(at: CGPoint(x: 0, y: 0))
                 },
@@ -191,8 +192,8 @@ struct RideSearchView: View {
             
             // Reste du code identique
             PinpointIndicator(
-                isActive: viewModel.isPinpointMode,
-                isResolving: viewModel.isResolvingAddress
+                isActive: viewModel.pinpoint.isPinpointMode,
+                isResolving: viewModel.pinpoint.isResolvingAddress
             )
             
             // Overlay bouton GPS
@@ -228,11 +229,11 @@ struct RideSearchView: View {
                 }
                 
                 // Affichage adresse en temps réel
-                if viewModel.isResolvingAddress || !viewModel.pinpointAddress.isEmpty {
+                if viewModel.pinpoint.isResolvingAddress || !viewModel.pinpoint.pinpointAddress.isEmpty {
                     HStack {
                         Spacer()
                         HStack(spacing: 8) {
-                            if viewModel.isResolvingAddress {
+                            if viewModel.pinpoint.isResolvingAddress {
                                 ProgressView()
                                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
                                     .scaleEffect(0.7)
@@ -242,7 +243,7 @@ struct RideSearchView: View {
                             } else {
                                 Text("📍")
                                     .font(.footnote)
-                                Text(viewModel.pinpointAddress)
+                                Text(viewModel.pinpoint.pinpointAddress)
                                     .font(.footnote)
                                     .fontWeight(.medium)
                                     .foregroundColor(.white)
@@ -310,10 +311,10 @@ struct RideSearchView: View {
                     
                     // Indicateur discret du mode actuel
                     HStack(spacing: 4) {
-                        Image(systemName: viewModel.isPinpointMode ? "map.fill" : "magnifyingglass")
+                        Image(systemName: viewModel.pinpoint.isPinpointMode ? "map.fill" : "magnifyingglass")
                             .font(.caption)
                             .foregroundColor(.gray)
-                        Text(viewModel.isPinpointMode ? "Carte" : "Recherche")
+                        Text(viewModel.pinpoint.isPinpointMode ? "Carte" : "Recherche")
                             .font(.caption2)
                             .foregroundColor(.gray)
                     }
@@ -330,7 +331,7 @@ struct RideSearchView: View {
                 addressFieldsSection
                 
                 // Indicateur mode pickup GPS
-                if !viewModel.useCustomPickup && viewModel.isPickupFromGPS {
+                if !viewModel.locationPicker.useCustomPickup && viewModel.locationPicker.isPickupFromGPS {
                     gpsPickupIndicator
                 }
                 
@@ -342,14 +343,14 @@ struct RideSearchView: View {
                 searchButton
                 
                 // Estimation
-                if viewModel.showEstimate {
+                if viewModel.route.showEstimate {
                     estimationSection
                 }
                 
                 // Suggestions (seulement en mode recherche)
                 if viewModel.showSuggestions &&
-                   !viewModel.suggestions.isEmpty &&
-                   !viewModel.isPinpointMode {
+                   !viewModel.addressSearch.suggestions.isEmpty &&
+                   !viewModel.pinpoint.isPinpointMode {
                     suggestionsList
                 }
             }
@@ -386,36 +387,36 @@ struct RideSearchView: View {
                 text: Binding(
                     get: { viewModel.displayPickupAddress },
                     set: { newValue in
-                        if viewModel.useCustomPickup {
+                        if viewModel.locationPicker.useCustomPickup {
                             viewModel.onLocationTextChanged(newValue, for: .pickup)
                         }
                     }
                 ),
                 placeholder: "pickupLocation".localized,
-                errorMessage: viewModel.pickupError,
+                errorMessage: viewModel.driverSearch.pickupError,
                 isPickup: true,
                 fieldType: .pickup,
                 activeField: $viewModel.activeField,
                 onTextChange: { newText in
-                    if viewModel.useCustomPickup {
+                    if viewModel.locationPicker.useCustomPickup {
                         viewModel.onLocationTextChanged(newText, for: .pickup)
                     }
                 },
                 onLocationSelected: { location in
                     viewModel.setPickupLocation(location)
                 },
-                isGPSMode: !viewModel.useCustomPickup,
+                isGPSMode: !viewModel.locationPicker.useCustomPickup,
                 onLongPress: {
                     viewModel.enableCustomPickup()
                 }
             )
             
             // Champ destination (masqué en mode pinpoint)
-            if !viewModel.isPinpointMode {
+            if !viewModel.pinpoint.isPinpointMode {
                 CentralizedLocationField(
                     text: $viewModel.destinationAddress,
                     placeholder: "destination".localized,
-                    errorMessage: viewModel.destinationError,
+                    errorMessage: viewModel.driverSearch.destinationError,
                     isPickup: false,
                     fieldType: .destination,
                     activeField: $viewModel.activeField,
@@ -508,12 +509,12 @@ struct RideSearchView: View {
             }
         }) {
             HStack {
-                if viewModel.isSearching {
+                if viewModel.driverSearch.isSearching {
                     ProgressView()
                         .progressViewStyle(CircularProgressViewStyle(tint: .white))
                         .scaleEffect(0.8)
                 }
-                Text(viewModel.isSearching ?
+                Text(viewModel.driverSearch.isSearching ?
                      ("searching".localized) :
                         ("findDrivers".localized))
                 .fontWeight(.semibold)
@@ -524,7 +525,7 @@ struct RideSearchView: View {
         .background(viewModel.canSearch ? Color.red : Color.gray.opacity(0.3))
         .foregroundColor(.white)
         .cornerRadius(8)
-        .disabled(viewModel.isSearching || !viewModel.canSearch)
+        .disabled(viewModel.driverSearch.isSearching || !viewModel.canSearch)
         .padding(.horizontal, 20)
     }
     
@@ -534,7 +535,7 @@ struct RideSearchView: View {
                 Text("estimatedFare".localized)
                     .font(.caption)
                     .foregroundColor(.gray)
-                Text(viewModel.estimatedFare)
+                Text(viewModel.route.estimatedFare)
                     .font(.footnote)
                     .fontWeight(.semibold)
                     .foregroundColor(.black)
@@ -544,7 +545,7 @@ struct RideSearchView: View {
                 Text("distance".localized)
                     .font(.caption)
                     .foregroundColor(.gray)
-                Text(viewModel.estimatedDistance)
+                Text(viewModel.route.estimatedDistance)
                     .font(.footnote)
                     .fontWeight(.semibold)
                     .foregroundColor(.black)
@@ -559,7 +560,7 @@ struct RideSearchView: View {
     // MARK: - Liste de suggestions
     private var suggestionsList: some View {
         VStack(spacing: 0) {
-            ForEach(viewModel.suggestions.prefix(Self.maxSuggestions), id: \.id) { suggestion in
+            ForEach(viewModel.addressSearch.suggestions.prefix(Self.maxSuggestions), id: \.id) { suggestion in
                 Button(action: {
                     viewModel.selectSuggestion(suggestion)
                 }) {
@@ -580,7 +581,7 @@ struct RideSearchView: View {
                 }
                 .buttonStyle(PlainButtonStyle())
                 
-                if suggestion.id != viewModel.suggestions.prefix(Self.maxSuggestions).last?.id {
+                if suggestion.id != viewModel.addressSearch.suggestions.prefix(Self.maxSuggestions).last?.id {
                     Divider()
                 }
             }
