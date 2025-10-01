@@ -689,7 +689,11 @@ import Combine
 //import MapKit
 //import Combine
 
-// MARK: - Vue principale redesign Premium
+//
+//  RideSearchView.swift - MODE HYBRIDE PINPOINT + KEYBOARD
+//  CaminoTestSwiftUI
+//
+
 
 struct RideSearchView: View {
     private static let maxSuggestions = 7
@@ -699,12 +703,10 @@ struct RideSearchView: View {
     @Environment(\.presentationMode) var presentationMode
     @EnvironmentObject var localizationManager: LocalizationManager
     
-    // États Mapbox
     @State private var mapboxCenter: CLLocationCoordinate2D = CLLocationCoordinate2D(latitude: 45.4215, longitude: -75.6972)
     @State private var cancellables = Set<AnyCancellable>()
-    
-    // État drawer suggestions
     @State private var showSuggestionsDrawer: Bool = false
+    @State private var isKeyboardMode: Bool = false  // NOUVEAU
     
     var body: some View {
         GeometryReader { geometry in
@@ -712,38 +714,58 @@ struct RideSearchView: View {
                 // 1. CARTE PLEIN ÉCRAN
                 mapboxFullScreen
                 
-                // 2. PINPOINT INDICATOR (CORRECTION 2: au-dessus de tout, centré)
-                if viewModel.pinpoint.isPinpointMode {
+                // 2. PINPOINT INDICATOR - TOUJOURS VISIBLE
+                VStack {
+                    Spacer()
+                        .frame(height: geometry.size.height * 0.5)
+                    
                     PinpointIndicator(
-                        isActive: viewModel.pinpoint.isPinpointMode,
+                        isActive: !isKeyboardMode,  // Actif sauf si clavier
                         isResolving: viewModel.pinpoint.isResolvingAddress
                     )
-                    .zIndex(100) // CORRECTION 2: Z-index élevé pour être au-dessus
+                    
+                    Spacer()
                 }
+                .zIndex(100)
                 
-                // 3. FLOATING SEARCH CARD - CORRECTION 1: Positionnement responsive 50%
+                // 3. FLOATING SEARCH CARD - TOUJOURS VISIBLE
                 VStack(spacing: 0) {
                     Spacer()
-                        .frame(height: geometry.size.height * 0.30) // 10% du haut = safeArea + marge
+                        .frame(height: geometry.size.height * 0.20)
                     
                     floatingSearchCard(geometry: geometry)
                     
-                    Spacer() // Pousse vers le haut
+                    Spacer()
                 }
-                .zIndex(50) // Au-dessus de la carte mais sous le pinpoint
+                .zIndex(50)
                 
-                // 4. BOUTONS D'ACTION EN OVERLAY
+                // 4. ADRESSE PINPOINT - En bas de la card
+                if !isKeyboardMode && !viewModel.pinpoint.pinpointAddress.isEmpty {
+                    VStack(spacing: 0) {
+                        Spacer()
+                            .frame(height: geometry.size.height * 0.10 + 120)
+                        
+                        pinpointAddressDisplay
+                        
+                        Spacer()
+                    }
+                    .zIndex(45)
+                    .transition(.opacity)
+                }
+                
+                // 5. BOUTONS D'ACTION EN OVERLAY
                 overlayButtons
                     .zIndex(60)
                 
-                // 5. DRAWER DE SUGGESTIONS EN BAS
-                if !viewModel.addressSearch.suggestions.isEmpty {
+                // 6. DRAWER DE SUGGESTIONS - Seulement en mode keyboard
+                if isKeyboardMode && !viewModel.addressSearch.suggestions.isEmpty {
                     BottomSuggestionsDrawer(
                         suggestions: $viewModel.addressSearch.suggestions,
                         isVisible: $showSuggestionsDrawer,
                         onSuggestionSelected: { suggestion in
                             viewModel.selectSuggestion(suggestion)
                             showSuggestionsDrawer = false
+                            isKeyboardMode = false  // Retour au mode pinpoint
                         }
                     )
                     .transition(.move(edge: .bottom))
@@ -780,6 +802,9 @@ struct RideSearchView: View {
             viewModel.setLocationService(locationService)
             viewModel.onViewAppear()
             setupMapboxObserver()
+            
+            // Activer le mode pinpoint par défaut
+            viewModel.pinpoint.isPinpointMode = true
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             viewModel.recheckLocationPermissions()
@@ -789,7 +814,7 @@ struct RideSearchView: View {
         }
         .onChange(of: viewModel.addressSearch.suggestions) { oldValue, newValue in
             withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                showSuggestionsDrawer = !newValue.isEmpty
+                showSuggestionsDrawer = !newValue.isEmpty && isKeyboardMode
             }
         }
     }
@@ -804,17 +829,20 @@ struct RideSearchView: View {
             isPinpointMode: $viewModel.pinpoint.isPinpointMode,
             onMapTap: { coordinate in
                 withAnimation {
+                    isKeyboardMode = false
                     showSuggestionsDrawer = false
                 }
             },
             onPinpointMove: { coordinate in
+                // Si on bouge la carte, on est en mode pinpoint
+                isKeyboardMode = false
                 viewModel.onMapCenterChangedSimple(coordinate: coordinate)
             }
         )
         .ignoresSafeArea()
     }
     
-    // MARK: - Floating Search Card - CORRECTION 1 & 3: Responsive + TextFields
+    // MARK: - Floating Search Card
     private func floatingSearchCard(geometry: GeometryProxy) -> some View {
         FloatingSearchCard(
             pickupAddress: $viewModel.pickupAddress,
@@ -823,12 +851,11 @@ struct RideSearchView: View {
             pickupError: viewModel.driverSearch.pickupError,
             destinationError: viewModel.driverSearch.destinationError,
             showGPSIndicator: !viewModel.locationPicker.isRideForSomeoneElse && viewModel.locationPicker.isPickupFromGPS,
-            
-            // CORRECTION 3: Callbacks pour text change (pas tap)
             onPickupTextChange: { newText in
+                // Dès qu'on tape, on passe en mode keyboard
+                isKeyboardMode = true
                 viewModel.onLocationTextChanged(newText, for: .pickup)
                 
-                // Auto-show drawer si texte > 3 caractères
                 if newText.count >= 3 {
                     withAnimation {
                         showSuggestionsDrawer = true
@@ -836,31 +863,61 @@ struct RideSearchView: View {
                 }
             },
             onDestinationTextChange: { newText in
+                // Dès qu'on tape, on passe en mode keyboard
+                isKeyboardMode = true
                 viewModel.onLocationTextChanged(newText, for: .destination)
                 
-                // Auto-show drawer si texte > 3 caractères
                 if newText.count >= 3 {
                     withAnimation {
                         showSuggestionsDrawer = true
                     }
                 }
+            },
+            onFieldFocused: { field in
+                // Quand on focus un champ sans taper, on reste en mode pinpoint
+                viewModel.activeField = field
+                viewModel.pinpoint.targetField = field
             }
         )
         .padding(.horizontal, 20)
+    }
+    
+    // MARK: - Affichage adresse pinpoint
+    private var pinpointAddressDisplay: some View {
+        HStack(spacing: 8) {
+            if viewModel.pinpoint.isResolvingAddress {
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    .scaleEffect(0.7)
+                Text("Recherche...")
+                    .font(.footnote)
+                    .foregroundColor(.white)
+            } else {
+                Text(viewModel.pinpoint.pinpointAddress)
+                    .font(.footnote)
+                    .fontWeight(.medium)
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(Color.black.opacity(0.7))
+        .cornerRadius(15)
+        .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 2)
     }
     
     // MARK: - Boutons d'action en overlay
     private var overlayButtons: some View {
         VStack {
             HStack {
-                // Bouton GPS
                 gpsLocationButton
                     .padding(.leading, 20)
                     .padding(.top, 60)
                 
                 Spacer()
                 
-                // Toggle langue
                 LanguageToggle()
                     .padding(.trailing, 20)
                     .padding(.top, 60)
@@ -920,7 +977,6 @@ struct RideSearchView: View {
     }
 }
 
-// MARK: - Preview
 struct RideSearchView_Previews: PreviewProvider {
     static var previews: some View {
         RideSearchView()
