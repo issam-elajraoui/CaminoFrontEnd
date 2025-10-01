@@ -59,16 +59,16 @@ public class GeocodeManager: ObservableObject {
         isProcessing = true
         let request = pendingRequests.removeFirst()
         
-        print("🚀 GeocodeManager: Processing request \(request.requestId)")
+        print(" GeocodeManager: Processing request \(request.requestId)")
         
         do {
             let address = try await performSingleGeocode(request.coordinate)
             request.continuation.resume(returning: address)
-            print("✅ GeocodeManager: Success for \(request.requestId): \(address)")
+            print(" GeocodeManager: Success for \(request.requestId): \(address)")
             
         } catch {
             request.continuation.resume(throwing: error)
-            print("❌ GeocodeManager: Error for \(request.requestId): \(error)")
+            print(" GeocodeManager: Error for \(request.requestId): \(error)")
         }
         
         isProcessing = false
@@ -87,6 +87,7 @@ public class GeocodeManager: ObservableObject {
         let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
         
         return try await withCheckedThrowingContinuation { continuation in
+            // ✅ Pas besoin de [weak self] car on n'utilise pas self
             geocoder.reverseGeocodeLocation(location) { placemarks, error in
                 
                 if let error = error {
@@ -95,34 +96,87 @@ public class GeocodeManager: ObservableObject {
                 }
                 
                 guard let placemark = placemarks?.first else {
-                    continuation.resume(throwing: NSError(domain: "GeocodeError", code: 1, userInfo: [NSLocalizedDescriptionKey: "No address found"]))
+                    continuation.resume(throwing: NSError(
+                        domain: "GeocodeError",
+                        code: 1,
+                        userInfo: [NSLocalizedDescriptionKey: "No address found"]
+                    ))
                     return
                 }
                 
-                // Formatage simple de l'adresse
+                // Formatage inline (pas besoin d'appeler self.formatPlacemark())
                 var components: [String] = []
                 
-                if let streetNumber = placemark.subThoroughfare {
-                    components.append(streetNumber)
+                // Partie 1: "1154 Tischart Cres"
+                if let number = placemark.subThoroughfare?.trimmingCharacters(in: .whitespaces),
+                   let street = placemark.thoroughfare?.trimmingCharacters(in: .whitespaces),
+                   !number.isEmpty, !street.isEmpty {
+                    components.append("\(number) \(street)")
+                } else if let street = placemark.thoroughfare?.trimmingCharacters(in: .whitespaces),
+                          !street.isEmpty {
+                    components.append(street)
                 }
                 
-                if let streetName = placemark.thoroughfare {
-                    components.append(streetName)
-                }
-                
-                if let city = placemark.locality {
+                // Partie 2: "Gloucester"
+                if let city = placemark.locality?.trimmingCharacters(in: .whitespaces), !city.isEmpty {
                     components.append(city)
                 }
                 
-                let address = components.isEmpty ? "Adresse inconnue" : components.joined(separator: " ")
+                // Partie 3: "ON K1B 5P5"
+                var provincePostal: [String] = []
+                if let province = placemark.administrativeArea?.trimmingCharacters(in: .whitespaces), !province.isEmpty {
+                    provincePostal.append(province)
+                }
+                if let postal = placemark.postalCode?.trimmingCharacters(in: .whitespaces), !postal.isEmpty {
+                    provincePostal.append(postal)
+                }
+                
+                if !provincePostal.isEmpty {
+                    components.append(provincePostal.joined(separator: " "))
+                }
+                
+                let address = components.isEmpty ? "Adresse inconnue" : components.joined(separator: ", ")
                 continuation.resume(returning: address)
             }
         }
     }
-    
+//    private func formatPlacemark(_ placemark: CLPlacemark) -> String {
+//        var components: [String] = []
+//        
+//        // Partie 1: "1154 Tischart Cres"
+//        if let number = placemark.subThoroughfare?.trimmingCharacters(in: .whitespaces),
+//           let street = placemark.thoroughfare?.trimmingCharacters(in: .whitespaces),
+//           !number.isEmpty, !street.isEmpty {
+//            components.append("\(number) \(street)")
+//        } else if let street = placemark.thoroughfare?.trimmingCharacters(in: .whitespaces),
+//                  !street.isEmpty {
+//            components.append(street)
+//        }
+//        
+//        // Partie 2: "Gloucester"
+//        if let city = placemark.locality?.trimmingCharacters(in: .whitespaces), !city.isEmpty {
+//            components.append(city)
+//        }
+//        
+//        // Partie 3: "ON K1B 5P5"
+//        var provincePostal: [String] = []
+//        if let province = placemark.administrativeArea?.trimmingCharacters(in: .whitespaces), !province.isEmpty {
+//            provincePostal.append(province)
+//        }
+//        if let postal = placemark.postalCode?.trimmingCharacters(in: .whitespaces), !postal.isEmpty {
+//            provincePostal.append(postal)
+//        }
+//        
+//        if !provincePostal.isEmpty {
+//            components.append(provincePostal.joined(separator: " "))
+//        }
+//        
+//        return components.isEmpty ? "Adresse inconnue" : components.joined(separator: ", ")
+//    }
+//    
     // MARK: - Méthode de nettoyage
     public func clearQueue() {
-        print("🧹 GeocodeManager: Clearing queue of \(pendingRequests.count) requests")
+        print(" GeocodeManager: Clearing queue of \(pendingRequests.count) requests")
         
         for request in pendingRequests {
             request.continuation.resume(throwing: CancellationError())

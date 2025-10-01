@@ -100,11 +100,14 @@ class AddressSearch: NSObject, ObservableObject {
             if let mapItem = response.mapItems.first {
                 let coordinate = mapItem.placemark.coordinate
                 
-                // Retourner suggestion avec coordonnées mises à jour
+                // Formater avec le placemark complet
+                let formattedAddress = formatAddress(from: mapItem.placemark)
+                
+                // Retourner suggestion avec adresse complète
                 return AddressSuggestion(
                     id: suggestion.id,
-                    displayText: suggestion.displayText,
-                    fullAddress: suggestion.fullAddress,
+                    displayText: formattedAddress,
+                    fullAddress: formattedAddress,
                     coordinate: coordinate,
                     completion: completion
                 )
@@ -148,14 +151,15 @@ class AddressSearch: NSObject, ObservableObject {
     }
     
     private func formatCompletionForDisplay(_ completion: MKLocalSearchCompletion) -> String {
-        let title = completion.title
-        let subtitle = completion.subtitle
-        
-        if subtitle.isEmpty || title.contains(subtitle) {
-            return title
-        }
-        
-        return "\(title), \(subtitle)"
+        return formatAddress(from: completion)
+//        let title = completion.title
+//        let subtitle = completion.subtitle
+//        
+//        if subtitle.isEmpty || title.contains(subtitle) {
+//            return title
+//        }
+//        
+//        return "\(title), \(subtitle)"
     }
     
     private func handleSearchError(_ error: Error) {
@@ -175,6 +179,86 @@ class AddressSearch: NSObject, ObservableObject {
                 }
             }
         }
+    }
+    
+    // MARK: - Address Formatting
+    /// Formatte une adresse au format unifié depuis la Carte
+    private func formatAddress(from placemark: CLPlacemark) -> String {
+        var components: [String] = []
+        
+        // Partie 1: "1154 Tischart Cres"
+        if let number = sanitizeComponent(placemark.subThoroughfare),
+           let street = sanitizeComponent(placemark.thoroughfare) {
+            components.append("\(number) \(street)")
+        } else if let street = sanitizeComponent(placemark.thoroughfare) {
+            components.append(street)
+        }
+        
+        // Partie 2: "Gloucester, ON K1B 5P5"
+        //var locationParts: [String] = []
+        if let city = sanitizeComponent(placemark.locality) {
+            components.append(city)
+        }
+        var provincePostal: [String] = []
+        if let province = sanitizeComponent(placemark.administrativeArea) {
+            provincePostal.append(province)
+        }
+        if let postal = sanitizeComponent(placemark.postalCode) {
+            provincePostal.append(postal)
+        }
+        
+        if !provincePostal.isEmpty {
+            components.append(provincePostal.joined(separator: " "))
+        }
+        
+        return components.isEmpty ? "Adresse inconnue" : components.joined(separator: ", ")
+    }
+
+    /// Formatte une adresse depuis MKLocalSearchCompletion
+    private func formatAddress(from completion: MKLocalSearchCompletion) -> String {
+        let title = sanitizeComponent(completion.title) ?? ""
+        let subtitle = sanitizeComponent(completion.subtitle) ?? ""
+        
+        if subtitle.isEmpty {
+            return title
+        }
+        
+        // Parser subtitle: "Gloucester, ON, Canada"
+        let parts = subtitle.split(separator: ",").map {
+            $0.trimmingCharacters(in: .whitespaces)
+        }
+        
+        // Reconstruire au format unifié
+        // var result = title
+        var components: [String] = [title]
+        if let city = parts.first {
+            components.append(city)
+        }
+        if parts.count > 1 {
+            components.append(parts[1]) // Province
+        }
+        
+        return components.joined(separator: ", ")
+    }
+    
+    private func sanitizeComponent(_ value: String?) -> String? {
+        guard let value = value else { return nil }
+        
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        
+        let maxLength = 100
+        let allowedCharacters = CharacterSet.alphanumerics
+            .union(.whitespaces)
+            .union(CharacterSet(charactersIn: ",-./()#'"))
+        
+        let filtered = trimmed.unicodeScalars
+            .filter { allowedCharacters.contains($0) }
+            .map(String.init)
+            .joined()
+        
+        let final = String(filtered.prefix(maxLength))
+        return final.isEmpty ? nil : final
     }
 }
 
@@ -205,7 +289,7 @@ extension AddressSearch: MKLocalSearchCompleterDelegate {
         didFailWithError error: Error
     ) {
         Task { @MainActor in
-            print("❌ AddressSearch: MKLocalSearchCompleter error - \(error)")
+            print(" AddressSearch: MKLocalSearchCompleter error - \(error)")
             handleSearchError(error)
         }
     }

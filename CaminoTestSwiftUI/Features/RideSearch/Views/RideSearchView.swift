@@ -509,7 +509,7 @@ struct RideSearchView: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: 44)
-        .background(viewModel.canSearch ? Color.red : Color.gray.opacity(0.3))
+        .background(viewModel.canSearch ? Color.red : Color.gray.opacity(0.9))
         .foregroundColor(.white)
         .cornerRadius(8)
         .disabled(viewModel.driverSearch.isSearching || !viewModel.canSearch)
