@@ -1,5 +1,5 @@
 //
-//  RideSearchView.swift - MODE HYBRIDE PINPOINT + KEYBOARD
+//  RideSearchView.swift - BOUTONS TOUJOURS VISIBLES AVEC ÉTATS
 //  CaminoTestSwiftUI
 //
 
@@ -9,7 +9,6 @@ import MapKit
 import Combine
 
 struct RideSearchView: View {
-    private static let maxSuggestions = 7
     
     @StateObject private var viewModel = RideSearchCoordinator()
     @StateObject private var locationService = LocationService()
@@ -18,71 +17,160 @@ struct RideSearchView: View {
     
     @State private var mapboxCenter: CLLocationCoordinate2D = CLLocationCoordinate2D(latitude: 45.4215, longitude: -75.6972)
     @State private var cancellables = Set<AnyCancellable>()
-    @State private var showSuggestionsDrawer: Bool = false
-    @State private var isKeyboardMode: Bool = false  // NOUVEAU
+    @State private var showDrawer: Bool = false
+    @State private var drawerItems: [DrawerItem] = []
+    
+    @FocusState private var focusedField: ActiveLocationField?
+    
+    // MOCK - Historique
+    private let mockRecentSearches: [AddressSuggestion] = [
+        AddressSuggestion(
+            id: "recent-1",
+            displayText: "Aéroport international Macdonald-Cartier, Ottawa",
+            fullAddress: "1000 Airport Parkway Private, Ottawa, ON K1V 9B4",
+            coordinate: CLLocationCoordinate2D(latitude: 45.3225, longitude: -75.6692)
+        ),
+        AddressSuggestion(
+            id: "recent-2",
+            displayText: "Rideau Centre, Ottawa",
+            fullAddress: "50 Rideau St, Ottawa, ON K1N 9J7",
+            coordinate: CLLocationCoordinate2D(latitude: 45.4256, longitude: -75.6911)
+        ),
+        AddressSuggestion(
+            id: "recent-3",
+            displayText: "Université d'Ottawa",
+            fullAddress: "75 Laurier Ave E, Ottawa, ON K1N 6N5",
+            coordinate: CLLocationCoordinate2D(latitude: 45.4215, longitude: -75.6830)
+        ),
+        AddressSuggestion(
+            id: "recent-4",
+            displayText: "Parlement du Canada",
+            fullAddress: "111 Wellington St, Ottawa, ON K1A 0A9",
+            coordinate: CLLocationCoordinate2D(latitude: 45.4236, longitude: -75.7009)
+        ),
+        AddressSuggestion(
+            id: "recent-5",
+            displayText: "ByWard Market, Ottawa",
+            fullAddress: "55 ByWard Market Square, Ottawa, ON K1N 7A1",
+            coordinate: CLLocationCoordinate2D(latitude: 45.4270, longitude: -75.6897)
+        )
+    ]
     
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                // 1. CARTE PLEIN ÉCRAN
+                // 1. CARTE
                 mapboxFullScreen
                 
-                // 2. PINPOINT INDICATOR - TOUJOURS VISIBLE
-                VStack {
-                    Spacer()
-                        .frame(height: geometry.size.height * 0.5)
-                    
-                    PinpointIndicator(
-                        isActive: !isKeyboardMode,  // Actif sauf si clavier
-                        isResolving: viewModel.pinpoint.isResolvingAddress
-                    )
-                    
-                    Spacer()
+                // 2. PINPOINT
+                if !showDrawer {
+                    VStack {
+                        Spacer()
+                            .frame(height: geometry.size.height * 0.5)
+                        
+                        PinpointIndicator(
+                            isActive: true,
+                            isResolving: viewModel.pinpoint.isResolvingAddress
+                        )
+                        
+                        Spacer()
+                    }
+                    .zIndex(100)
+                    .transition(.opacity)
                 }
-                .zIndex(100)
                 
-                // 3. FLOATING SEARCH CARD - TOUJOURS VISIBLE
+                // 3. FLOATING CARD
                 VStack(spacing: 0) {
                     Spacer()
-                        .frame(height: geometry.size.height * 0.20)
+                        .frame(height: geometry.size.height * 0.15)
                     
-                    floatingSearchCard(geometry: geometry)
+                    FloatingSearchCard(
+                        pickupAddress: $viewModel.pickupAddress,
+                        destinationAddress: $viewModel.destinationAddress,
+                        activeField: $viewModel.activeField,
+                        pickupError: viewModel.driverSearch.pickupError,
+                        destinationError: viewModel.driverSearch.destinationError,
+                        showGPSIndicator: !viewModel.locationPicker.isRideForSomeoneElse && viewModel.locationPicker.isPickupFromGPS,
+                        onPickupTextChange: { newText in
+                            viewModel.onLocationTextChanged(newText, for: .pickup)
+                            updateDrawerItems()
+                        },
+                        onDestinationTextChange: { newText in
+                            viewModel.onLocationTextChanged(newText, for: .destination)
+                            updateDrawerItems()
+                        },
+                        focusedField: $focusedField
+                    )
+                    .padding(.horizontal, 20)
                     
                     Spacer()
                 }
                 .zIndex(50)
                 
-                // 4. ADRESSE PINPOINT - En bas de la card
-                if !isKeyboardMode && !viewModel.pinpoint.pinpointAddress.isEmpty {
-                    VStack(spacing: 0) {
-                        Spacer()
-                            .frame(height: geometry.size.height * 0.10 + 120)
-                        
-                        pinpointAddressDisplay
-                        
-                        Spacer()
-                    }
-                    .zIndex(45)
-                    .transition(.opacity)
-                }
-                
-                // 5. BOUTONS D'ACTION EN OVERLAY
+                // 4. ADRESSE PINPOINT
+//                if !showDrawer && !viewModel.pinpoint.pinpointAddress.isEmpty {
+//                    VStack(spacing: 0) {
+//                        Spacer()
+//                            .frame(height: geometry.size.height * 0.15 + 120)
+//                        
+//                        HStack(spacing: 8) {
+//                            if viewModel.pinpoint.isResolvingAddress {
+//                                ProgressView()
+//                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+//                                    .scaleEffect(0.7)
+//                                Text("Recherche...")
+//                                    .font(.footnote)
+//                                    .foregroundColor(.white)
+//                            } else {
+//                                Text(viewModel.pinpoint.pinpointAddress)
+//                                    .font(.footnote)
+//                                    .fontWeight(.medium)
+//                                    .foregroundColor(.white)
+//                                    .multilineTextAlignment(.center)
+//                                    .lineLimit(2)
+//                            }
+//                        }
+//                        .padding(.horizontal, 16)
+//                        .padding(.vertical, 10)
+//                        .background(Color.black.opacity(0.7))
+//                        .cornerRadius(15)
+//                        .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 2)
+//                        
+//                        Spacer()
+//                    }
+//                    .zIndex(45)
+//                    .transition(.opacity)
+//                }
+//                
+                // 5. BOUTONS OVERLAY
                 overlayButtons
-                    .zIndex(60)
                 
-//                 6. DRAWER DE SUGGESTIONS - Seulement en mode keyboard
-                if isKeyboardMode && !viewModel.addressSearch.suggestions.isEmpty {
-                    BottomSuggestionsDrawer(
-                        suggestions: $viewModel.addressSearch.suggestions,
-                        isVisible: $showSuggestionsDrawer,
-                        onSuggestionSelected: { suggestion in
-                            viewModel.selectSuggestion(suggestion)
-                            showSuggestionsDrawer = false
-                            isKeyboardMode = false  // Retour au mode pinpoint
-                        }
-                    )
+                // 6. DRAWER
+                if showDrawer && !drawerItems.isEmpty {
+                    GeometryReader { geo in
+                        let cardTopOffset = geo.size.height * 0.15
+                        let cardHeight: CGFloat = 120
+                        let cardBottomY = cardTopOffset + cardHeight
+                        
+                        BottomSuggestionsDrawer(
+                            items: $drawerItems,
+                            isVisible: $showDrawer,
+                            onItemSelected: { suggestion in
+                                viewModel.selectSuggestion(suggestion)
+                                focusedField = nil
+                            },
+                            cardBottomY: cardBottomY
+                        )
+                    }
                     .transition(.move(edge: .bottom))
                     .zIndex(40)
+                }
+                
+                // 7. BOUTONS LATER / RIDE NOW - TOUJOURS VISIBLES
+                if !showDrawer {
+                    actionButtons
+                        .zIndex(70)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
         }
@@ -115,9 +203,8 @@ struct RideSearchView: View {
             viewModel.setLocationService(locationService)
             viewModel.onViewAppear()
             setupMapboxObserver()
-            
-            // Activer le mode pinpoint par défaut
             viewModel.pinpoint.isPinpointMode = true
+            updateDrawerItems()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             viewModel.recheckLocationPermissions()
@@ -125,14 +212,163 @@ struct RideSearchView: View {
         .onDisappear {
             viewModel.pinpoint.cleanupPinpointTasks()
         }
-        .onChange(of: viewModel.addressSearch.suggestions) { oldValue, newValue in
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                showSuggestionsDrawer = !newValue.isEmpty && isKeyboardMode
+        .onChange(of: viewModel.addressSearch.suggestions) { _, _ in
+            updateDrawerItems()
+        }
+        .onChange(of: focusedField) { _, newField in
+            if newField != nil {
+                viewModel.activeField = newField ?? .none
+                viewModel.pinpoint.targetField = newField ?? .destination
+                updateDrawerItems()
+                showDrawer = true
             }
         }
     }
     
-    // MARK: - Carte Plein Écran
+    // MARK: - Boutons Later / Ride Now (toujours visibles)
+    private var actionButtons: some View {
+        VStack {
+            Spacer()
+            
+            HStack(spacing: 12) {
+                // Bouton Later (outline)
+                Button(action: {
+                    handleLaterBooking()
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "clock")
+                            .font(.system(size: 16, weight: .medium))
+                        Text("Later")
+                            .fontWeight(.semibold)
+                    }
+                    .foregroundColor(canProceed ? .red : .gray)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 56)
+                    .background(Color.white)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(canProceed ? Color.red : Color.gray, lineWidth: 2)
+                    )
+                    .cornerRadius(16)
+                    //.shadow(color: .black.opacity(canProceed ? 0.1 : 0.05), radius: 8, x: 0, y: 4)
+                }
+                .disabled(!canProceed)
+                .opacity(canProceed ? 1.0 : 0.8)
+                
+                // Bouton Ride Now (filled)
+                Button(action: {
+                    handleRideNow()
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "car.fill")
+                            .font(.system(size: 16, weight: .medium))
+                        Text("Ride Now")
+                            .fontWeight(.semibold)
+                    }
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 56)
+                    .background(canProceed ? Color.red : Color.gray)
+                    .cornerRadius(16)
+                    //.shadow(color: canProceed ? Color.red.opacity(0.4) : Color.clear, radius: 12, x: 0, y: 6)
+                }
+                .disabled(!canProceed)
+                .opacity(canProceed ? 1.0 : 0.8)
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 40)
+        }
+    }
+    
+    // MARK: - Condition d'activation des boutons
+    private var canProceed: Bool {
+        let hasPickup = !viewModel.pickupAddress.isEmpty &&
+                        viewModel.locationPicker.pickupCoordinate != nil
+        let hasDestination = !viewModel.destinationAddress.isEmpty &&
+                             viewModel.destinationAddress != ""
+        
+        return hasPickup && hasDestination
+    }
+    
+    // MARK: - Actions des boutons
+    private func handleLaterBooking() {
+        focusedField = nil
+        showDrawer = false
+        
+        print("📅 Later booking - Navigate to schedule screen")
+        // TODO: Navigation vers écran de planification
+    }
+    
+    private func handleRideNow() {
+        focusedField = nil
+        showDrawer = false
+        
+        print("🚗 Ride Now - Searching for drivers...")
+        
+        Task {
+            await viewModel.searchDrivers()
+        }
+    }
+    
+    // MARK: - Boutons en stack vertical haut droite
+    private var overlayButtons: some View {
+        VStack {
+            HStack {
+                Spacer()
+                
+                VStack(spacing: 12) {
+                    Button(action: {
+                        Task {
+                            await viewModel.centerOnUserLocation()
+                        }
+                    }) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.white)
+                                .frame(width: 44, height: 44)
+                                .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 2)
+                            
+                            Image(systemName: locationService.isLocationAvailable ? "location.fill" : "location.slash")
+                                .font(.system(size: 18, weight: .medium))
+                                .foregroundColor(locationService.isLocationAvailable ? .red : .gray)
+                        }
+                    }
+                    .disabled(!locationService.isLocationAvailable)
+                    
+                   // LanguageToggle()
+                }
+                .padding(.trailing, 20)
+                .padding(.top, 50)
+            }
+            
+            Spacer()
+        }
+        .zIndex(60)
+    }
+    
+    // MARK: - Smart Mix
+    private func updateDrawerItems() {
+        var items: [DrawerItem] = []
+        let maxItems = 7
+        
+        let suggestions = viewModel.addressSearch.suggestions
+        let suggestionItems = suggestions.prefix(5).map { suggestion in
+            DrawerItem(type: .suggestion, suggestion: suggestion)
+        }
+        items.append(contentsOf: suggestionItems)
+        
+        let remainingSlots = maxItems - items.count
+        if remainingSlots > 0 {
+            let recentItems = mockRecentSearches.prefix(remainingSlots).map { suggestion in
+                DrawerItem(type: .recent, suggestion: suggestion)
+            }
+            items.append(contentsOf: recentItems)
+        }
+        
+        drawerItems = items
+    }
+    
+    // MARK: - Carte
     private var mapboxFullScreen: some View {
         MapboxWrapper(
             center: $mapboxCenter,
@@ -140,128 +376,18 @@ struct RideSearchView: View {
             route: $viewModel.route.currentRoute,
             showUserLocation: $viewModel.showUserLocation,
             isPinpointMode: $viewModel.pinpoint.isPinpointMode,
-            onMapTap: { coordinate in
-                withAnimation {
-                    isKeyboardMode = false
-                    showSuggestionsDrawer = false
-                }
+            onMapTap: { _ in
+                focusedField = nil
+                showDrawer = false
             },
             onPinpointMove: { coordinate in
-                // Si on bouge la carte, on est en mode pinpoint
-                isKeyboardMode = false
                 viewModel.onMapCenterChangedSimple(coordinate: coordinate)
             }
         )
         .ignoresSafeArea()
     }
     
-    // MARK: - Floating Search Card
-    private func floatingSearchCard(geometry: GeometryProxy) -> some View {
-        FloatingSearchCard(
-            pickupAddress: $viewModel.pickupAddress,
-            destinationAddress: $viewModel.destinationAddress,
-            activeField: $viewModel.activeField,
-            pickupError: viewModel.driverSearch.pickupError,
-            destinationError: viewModel.driverSearch.destinationError,
-            showGPSIndicator: !viewModel.locationPicker.isRideForSomeoneElse && viewModel.locationPicker.isPickupFromGPS,
-            onPickupTextChange: { newText in
-                // Dès qu'on tape, on passe en mode keyboard
-                isKeyboardMode = true
-                viewModel.onLocationTextChanged(newText, for: .pickup)
-                
-                if newText.count >= 3 {
-                    withAnimation {
-                        showSuggestionsDrawer = true
-                    }
-                }
-            },
-            onDestinationTextChange: { newText in
-                // Dès qu'on tape, on passe en mode keyboard
-                isKeyboardMode = true
-                viewModel.onLocationTextChanged(newText, for: .destination)
-                
-                if newText.count >= 3 {
-                    withAnimation {
-                        showSuggestionsDrawer = true
-                    }
-                }
-            },
-            onFieldFocused: { field in
-                // Quand on focus un champ sans taper, on reste en mode pinpoint
-                viewModel.activeField = field
-                viewModel.pinpoint.targetField = field
-            }
-        )
-        .padding(.horizontal, 20)
-    }
-    
-    // MARK: - Affichage adresse pinpoint
-    private var pinpointAddressDisplay: some View {
-        HStack(spacing: 8) {
-            if viewModel.pinpoint.isResolvingAddress {
-                ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                    .scaleEffect(0.7)
-                Text("Recherche...")
-                    .font(.footnote)
-                    .foregroundColor(.white)
-            } else {
-                Text(viewModel.pinpoint.pinpointAddress)
-                    .font(.footnote)
-                    .fontWeight(.medium)
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(Color.black.opacity(0.7))
-        .cornerRadius(15)
-        .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 2)
-    }
-    
-    // MARK: - Boutons d'action en overlay
-    private var overlayButtons: some View {
-        VStack {
-            HStack {
-                gpsLocationButton
-                    .padding(.leading, 20)
-                    .padding(.top, 60)
-                
-                Spacer()
-                
-                LanguageToggle()
-                    .padding(.trailing, 20)
-                    .padding(.top, 60)
-            }
-            
-            Spacer()
-        }
-    }
-    
-    // MARK: - Bouton GPS
-    private var gpsLocationButton: some View {
-        Button(action: {
-            Task {
-                await viewModel.centerOnUserLocation()
-            }
-        }) {
-            ZStack {
-                Circle()
-                    .fill(Color.white)
-                    .frame(width: 44, height: 44)
-                    .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 2)
-                
-                Image(systemName: locationService.isLocationAvailable ? "location.fill" : "location.slash")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundColor(locationService.isLocationAvailable ? .red : .gray)
-            }
-        }
-        .disabled(!locationService.isLocationAvailable)
-    }
-    
-    // MARK: - Setup Mapbox Observer
+    // MARK: - Setup
     private func setupMapboxObserver() {
         viewModel.$annotations
             .removeDuplicates()

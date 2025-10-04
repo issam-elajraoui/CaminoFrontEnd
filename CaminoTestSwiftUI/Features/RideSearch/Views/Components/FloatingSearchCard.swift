@@ -1,11 +1,10 @@
 //
-//  FloatingSearchCard.swift
+//  FloatingSearchCard.swift - CORRECTION
 //  CaminoTestSwiftUI
 //
-//  Created by Issam EL MOUJAHID on 2025-09-30.
+
 //
-//
-//  FloatingSearchCard.swift - PINPOINT TOUJOURS ACTIF
+//  FloatingSearchCard.swift - CORRECTION FOCUS INDIVIDUEL
 //  CaminoTestSwiftUI
 //
 
@@ -14,7 +13,6 @@ import CoreLocation
 
 struct FloatingSearchCard: View {
     
-    // MARK: - Bindings
     @Binding var pickupAddress: String
     @Binding var destinationAddress: String
     @Binding var activeField: ActiveLocationField
@@ -25,12 +23,9 @@ struct FloatingSearchCard: View {
     
     let onPickupTextChange: (String) -> Void
     let onDestinationTextChange: (String) -> Void
-    let onFieldFocused: (ActiveLocationField) -> Void  // NOUVEAU
     
-    // MARK: - FocusState
-    @FocusState private var focusedField: ActiveLocationField?
+    @FocusState.Binding var focusedField: ActiveLocationField?  // CORRECTION: Enum au lieu de Bool
     
-    // MARK: - Configuration
     private let fieldHeight: CGFloat = 50
     private let shadowRadius: CGFloat = 12
     private let cornerRadius: CGFloat = 16
@@ -46,14 +41,10 @@ struct FloatingSearchCard: View {
                 TextField("pickupLocation".localized, text: $pickupAddress)
                     .font(.system(size: 16, weight: .medium))
                     .foregroundColor(.black)
-                    .focused($focusedField, equals: .pickup)
-                    .onChange(of: pickupAddress) { oldValue, newValue in
-                        onPickupTextChange(newValue)
-                    }
-                    .onTapGesture {
+                    .focused($focusedField, equals: .pickup)  // CORRECTION: Focus sur .pickup
+                    .onChange(of: pickupAddress) { _, newValue in
                         activeField = .pickup
-                        focusedField = .pickup
-                        onFieldFocused(.pickup)
+                        onPickupTextChange(newValue)
                     }
                 
                 if showGPSIndicator {
@@ -89,14 +80,10 @@ struct FloatingSearchCard: View {
                 TextField("destination".localized, text: $destinationAddress)
                     .font(.system(size: 16, weight: .medium))
                     .foregroundColor(.black)
-                    .focused($focusedField, equals: .destination)
-                    .onChange(of: destinationAddress) { oldValue, newValue in
-                        onDestinationTextChange(newValue)
-                    }
-                    .onTapGesture {
+                    .focused($focusedField, equals: .destination)  // CORRECTION: Focus sur .destination
+                    .onChange(of: destinationAddress) { _, newValue in
                         activeField = .destination
-                        focusedField = .destination
-                        onFieldFocused(.destination)
+                        onDestinationTextChange(newValue)
                     }
                 
                 if !destinationAddress.isEmpty {
@@ -114,7 +101,6 @@ struct FloatingSearchCard: View {
             .padding(.horizontal, 16)
             .background(Color.white)
             
-            // Messages d'erreur
             if !pickupError.isEmpty || !destinationError.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     if !pickupError.isEmpty {
@@ -131,24 +117,9 @@ struct FloatingSearchCard: View {
         }
         .background(Color.white)
         .cornerRadius(cornerRadius)
-        .shadow(
-            color: .black.opacity(0.12),
-            radius: shadowRadius,
-            x: 0,
-            y: 4
-        )
-        .onChange(of: activeField) { oldValue, newValue in
-            focusedField = newValue
-        }
-        .onChange(of: focusedField) { oldValue, newValue in
-            if let newValue = newValue {
-                activeField = newValue
-                onFieldFocused(newValue)
-            }
-        }
+        .shadow(color: .black.opacity(0.12), radius: shadowRadius, x: 0, y: 4)
     }
     
-    // MARK: - Helper
     private func errorLabel(_ message: String) -> some View {
         HStack(spacing: 6) {
             Image(systemName: "exclamationmark.circle.fill")
