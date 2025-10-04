@@ -80,3 +80,12 @@
 "confirmLocation" = "Confirmer la position";
 "resolvingAddress" = "Recherche de l'adresse...";
 "dragMapToChoose" = "Déplacez la carte pour choisir";
+
+
+/* POI Categories */
+"poiLibrary" = "Bibliothèque";
+"poiSupermarket" = "Supermarché";
+"poiPark" = "Parc";
+"poiHospital" = "Hôpital";
+"poiRestaurant" = "Restaurant";
+"poiGasStation" = "Station-service";

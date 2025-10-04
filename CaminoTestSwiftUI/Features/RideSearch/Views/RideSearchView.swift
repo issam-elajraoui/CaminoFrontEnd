@@ -376,6 +376,8 @@ struct RideSearchView: View {
             route: $viewModel.route.currentRoute,
             showUserLocation: $viewModel.showUserLocation,
             isPinpointMode: $viewModel.pinpoint.isPinpointMode,
+            pois: $viewModel.nearbyPOIs,  // NOUVEAU
+            cars: $viewModel.nearbyCars,
             onMapTap: { _ in
                 focusedField = nil
                 showDrawer = false

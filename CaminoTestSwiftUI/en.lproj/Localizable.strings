@@ -80,3 +80,11 @@
 "confirmLocation" = "Confirm location";
 "resolvingAddress" = "Finding address...";
 "dragMapToChoose" = "Drag map to choose";
+
+/* POI Categories */
+"poiLibrary" = "Library";
+"poiSupermarket" = "Supermarket";
+"poiPark" = "Park";
+"poiHospital" = "Hospital";
+"poiRestaurant" = "Restaurant";
+"poiGasStation" = "Gas Station";

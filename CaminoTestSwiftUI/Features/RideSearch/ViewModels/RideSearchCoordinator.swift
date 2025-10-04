@@ -44,10 +44,23 @@ class RideSearchCoordinator: ObservableObject {
     // MARK: - Location Permission
     @Published var showLocationPermission = false
     
+    
+    // MARK: POIs
+    @Published var nearbyPOIs: [PointOfInterest] = []
+    @Published var showPOIs: Bool = true
+    
+    // MARK: Vehicles
+    @Published var nearbyCars: [CarVehicle] = []
+    @Published var showCars: Bool = true
+    
     // MARK: - Private Properties
     private var locationService: LocationService?
     private var destinationCoordinate: CLLocationCoordinate2D?
     private var cancellables = Set<AnyCancellable>()
+    
+    
+    private var carRefreshTimer: Timer?
+    private var lastPOILoadLocation: CLLocationCoordinate2D?
     
     // MARK: - Computed Properties
     var displayPickupAddress: String {
@@ -111,6 +124,41 @@ class RideSearchCoordinator: ObservableObject {
                 }
             }
             .store(in: &cancellables)
+        //
+        func setLocationService(_ service: LocationService) {
+            self.locationService = service
+            locationPicker.observeLocationService(service)
+            
+            // Configure search region for address search
+            service.$currentLocation
+                .compactMap { $0 }
+                .sink { [weak self] location in
+                    self?.addressSearch.configureSearchRegion(center: location)
+                }
+                .store(in: &cancellables)
+            
+            // NOUVEAU - Observer pour POIs
+            service.$currentLocation
+                .compactMap { $0 }
+                .sink { [weak self] location in
+                    guard let self = self else { return }
+                    
+                    if let lastLocation = self.lastPOILoadLocation {
+                        let distance = CLLocation(latitude: lastLocation.latitude, longitude: lastLocation.longitude)
+                            .distance(from: CLLocation(latitude: location.latitude, longitude: location.longitude))
+                        
+                        if distance > 1000 {
+                            self.lastPOILoadLocation = location
+                            self.loadNearbyPOIs()
+                        }
+                    } else {
+                        self.lastPOILoadLocation = location
+                        self.loadNearbyPOIs()
+                    }
+                }
+                .store(in: &cancellables)
+        }
+        
     }
     
     // MARK: - LocationService Setup
@@ -134,6 +182,10 @@ class RideSearchCoordinator: ObservableObject {
         if activeField == .none {
             activeField = .destination
         }
+        if showPOIs {
+            loadNearbyPOIs()
+        }
+        loadNearbyCars()
     }
     
     func onDisappear() {
@@ -407,4 +459,43 @@ class RideSearchCoordinator: ObservableObject {
     func selectDriver(_ driver: Driver) {
         driverSearch.selectDriver(driver)
     }
+    
+    
+    
+    private func loadNearbyPOIs() {
+        Task {
+            guard let center = locationService?.currentLocation else { return }
+            
+            do {
+                let pois = try await POIService.shared.fetchNearbyPOIs(
+                    center: center,
+                    categories: [.library, .supermarket, .park]
+                )
+                
+                await MainActor.run {
+                    nearbyPOIs = pois
+                    print(" Loaded \(pois.count) POIs")
+                }
+            } catch {
+                print(" Failed to load POIs: \(error)")
+            }
+        }
+    }
+    
+    private func loadNearbyCars() {
+        guard let center = locationService?.currentLocation else {
+            let ottawaCenter = CLLocationCoordinate2D(latitude: 45.4215, longitude: -75.6972)
+            nearbyCars = MockCarService.shared.generateMockCars(around: ottawaCenter)
+            return
+        }
+        
+        nearbyCars = MockCarService.shared.generateMockCars(around: center)
+    }
+
+    func startCarSimulation() {
+        carRefreshTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
+            self?.loadNearbyCars()
+        }
+    }
+
 }

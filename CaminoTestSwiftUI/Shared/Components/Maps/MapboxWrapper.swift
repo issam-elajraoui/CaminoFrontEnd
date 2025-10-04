@@ -21,6 +21,13 @@ public struct MapboxWrapper: UIViewRepresentable {
     @Binding var route: RouteResult?
     @Binding var showUserLocation: Bool
     
+    // Ajout de POI
+    @Binding var pois: [PointOfInterest]
+    
+    // Vehicles
+    @Binding var cars: [CarVehicle]
+
+    
     @Binding var isPinpointMode: Bool
 
     
@@ -37,24 +44,29 @@ public struct MapboxWrapper: UIViewRepresentable {
     
     // MARK: - Initialisation
     init(
-        center: Binding<CLLocationCoordinate2D>,
-        annotations: Binding<[LocationAnnotation]>,
-        route: Binding<RouteResult?>,
-        showUserLocation: Binding<Bool>,
-        isPinpointMode: Binding<Bool>,
-        onMapTap: @escaping (CLLocationCoordinate2D) -> Void = { _ in },
-        onPinpointMove: @escaping (CLLocationCoordinate2D) -> Void = { _ in },  // NOUVEAU
-        onAnnotationTap: @escaping (LocationAnnotation) -> Void = { _ in }
-    ) {
-        self._center = center
-        self._annotations = annotations
-        self._route = route
-        self._showUserLocation = showUserLocation
-        self._isPinpointMode = isPinpointMode
-        self.onMapTap = onMapTap
-        self.onPinpointMove = onPinpointMove  // NOUVEAU
-        self.onAnnotationTap = onAnnotationTap
-    }
+            center: Binding<CLLocationCoordinate2D>,
+            annotations: Binding<[LocationAnnotation]>,
+            route: Binding<RouteResult?>,
+            showUserLocation: Binding<Bool>,
+            isPinpointMode: Binding<Bool>,
+            pois: Binding<[PointOfInterest]>,
+            cars: Binding<[CarVehicle]>,  // AVANT les closures
+            onMapTap: @escaping (CLLocationCoordinate2D) -> Void = { _ in },
+            onPinpointMove: @escaping (CLLocationCoordinate2D) -> Void = { _ in },
+            onAnnotationTap: @escaping (LocationAnnotation) -> Void = { _ in }
+        ) {
+            self._center = center
+            self._annotations = annotations
+            self._route = route
+            self._showUserLocation = showUserLocation
+            self._isPinpointMode = isPinpointMode
+            self._pois = pois
+            self._cars = cars
+            self.onMapTap = onMapTap
+            self.onPinpointMove = onPinpointMove
+            self.onAnnotationTap = onAnnotationTap
+        }
+        
     
     // MARK: - UIViewRepresentable
     public func makeUIView(context: Context) -> UIView {
@@ -87,29 +99,32 @@ public struct MapboxWrapper: UIViewRepresentable {
         setupCanadianTheme(mapView)
         
         // SIMPLE - Pas d'auto-sync, seulement réaction aux gestures
-        print("🟦 MapboxWrapper: Created map, isPinpointMode = \(isPinpointMode)")
+        print(" MapboxWrapper: Created map, isPinpointMode = \(isPinpointMode)")
         
-        // ✅ Appels directs - pas d'observer
+        // Appels directs - pas d'observer
         updateAnnotations(mapView)
         updateRoute(mapView)
         updateUserLocation(mapView)
+        // updatePOIs et Voitures
+        updatePOIs(mapView)
+        updateCars(mapView)
         
         // Configuration événement map loaded
 //        mapView.mapboxMap.onMapLoaded.observeNext { [weak mapView] _ in
 //            guard let mapView = mapView else { return }
 //            
-//            // ✅ Pas de modification d'état - seulement appels de fonction
+//            // Pas de modification d'état - seulement appels de fonction
 //            Task { @MainActor in
 //                // Plus de délai pour être sûr
 //                try? await Task.sleep(for: .milliseconds(200))
 //                
-//                // ❌ SUPPRIMER : self.mapView = mapView
+//                // SUPPRIMER : self.mapView = mapView
 //                
-//                // ✅ Appels directs sans modification d'état
+//                // Appels directs sans modification d'état
 //                self.updateAnnotations(mapView)
 //                self.updateRoute(mapView)
 //                self.updateUserLocation(mapView)
-//                print("🟦 MapboxWrapper: Map loaded")
+//                print(" MapboxWrapper: Map loaded")
 //            }
 //        }.store(in: &cancellables)
         
@@ -167,12 +182,12 @@ public struct MapboxWrapper: UIViewRepresentable {
     // MARK: - Mise à jour Mapbox corrigée
     private func updateMapboxView(_ mapView: MapView, context: Context) {
         
-        print("🔴 updateMapboxView called - center: \(center)")
-        print("🔴 isPinpointMode: \(isPinpointMode)")
+        print(" updateMapboxView called - center: \(center)")
+        print(" isPinpointMode: \(isPinpointMode)")
            
-           // ✅ BLOQUER complètement en mode pinpoint
+           // BLOQUER complètement en mode pinpoint
         guard !isPinpointMode else {
-               print("🔴 SKIPPING updateMapboxView - pinpoint mode active")
+               print(" SKIPPING updateMapboxView - pinpoint mode active")
                return
         }
            
@@ -204,6 +219,8 @@ public struct MapboxWrapper: UIViewRepresentable {
         updateAnnotations(mapView)
         updateRoute(mapView)
         updateUserLocation(mapView)
+        updatePOIs(mapView)
+        updateCars(mapView)
     }
     
     
@@ -243,6 +260,56 @@ public struct MapboxWrapper: UIViewRepresentable {
         }
         
         pointAnnotationManager.annotations = pointAnnotations
+    }
+    
+    // MARK: - Gestion des POIs
+    private func updatePOIs(_ mapView: MapView) {
+        let poiAnnotationManager = mapView.annotations.makePointAnnotationManager(id: "pois")
+        
+        poiAnnotationManager.annotations = []
+        
+        var poiAnnotations: [PointAnnotation] = []
+        
+        for poi in pois {
+            guard MapboxConfig.isValidCoordinate(poi.coordinate) else { continue }
+            
+            var pointAnnotation = PointAnnotation(coordinate: poi.coordinate)
+            pointAnnotation.iconColor = StyleColor(poi.category.color)
+            pointAnnotation.iconSize = 0.8
+            pointAnnotation.textField = poi.name
+            pointAnnotation.textSize = 10
+            pointAnnotation.textColor = StyleColor(.darkGray)
+            pointAnnotation.textHaloColor = StyleColor(.white)
+            pointAnnotation.textHaloWidth = 1.0
+            pointAnnotation.textOffset = [0, 1.5]
+            
+            poiAnnotations.append(pointAnnotation)
+        }
+        
+        poiAnnotationManager.annotations = poiAnnotations
+    }
+    
+    // MARK: - Gestion des Vehicles
+    private func updateCars(_ mapView: MapView) {
+        let carAnnotationManager = mapView.annotations.makePointAnnotationManager(id: "cars")
+        
+        carAnnotationManager.annotations = []
+        
+        var carAnnotations: [PointAnnotation] = []
+        
+        for car in cars {
+            guard MapboxConfig.isValidCoordinate(car.coordinate) else { continue }
+            
+            var pointAnnotation = PointAnnotation(coordinate: car.coordinate)
+            pointAnnotation.iconColor = StyleColor(car.status.color)
+            pointAnnotation.iconSize = 1.2
+            pointAnnotation.iconRotate = car.heading
+            
+            carAnnotations.append(pointAnnotation)
+        }
+        
+        carAnnotationManager.annotations = carAnnotations
+        print("✅ Updated \(carAnnotations.count) cars on map")
     }
     
     // MARK: - CORRECTION: Gestion route ultra-simplifiée
@@ -350,7 +417,7 @@ extension MapboxWrapper {
                 
                 guard MapboxConfig.isValidCoordinate(currentCenter) else { return }
                 
-                print("🟦 Pan ended - center: \(currentCenter)")
+                print(" Pan ended - center: \(currentCenter)")
                 self.parent.onPinpointMove(currentCenter)
             }
         }
@@ -358,7 +425,7 @@ extension MapboxWrapper {
 
         
         public func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
-            return true  // ✅ COOPÉRATION avec Mapbox
+            return true  //  COOPÉRATION avec Mapbox
         }
     }
     
@@ -380,23 +447,32 @@ public struct MapboxWrapper: UIViewRepresentable {
     @Binding var annotations: [LocationAnnotation]
     @Binding var route: RouteResult?
     @Binding var showUserLocation: Bool
-    
+    @Binding var cars: [CarVehicle]
     let onMapTap: (CLLocationCoordinate2D) -> Void
     let onAnnotationTap: (LocationAnnotation) -> Void
     
+
     init(
         center: Binding<CLLocationCoordinate2D>,
         annotations: Binding<[LocationAnnotation]>,
         route: Binding<RouteResult?>,
         showUserLocation: Binding<Bool>,
+        isPinpointMode: Binding<Bool>,
+        pois: Binding<[PointOfInterest]>,
+        cars: Binding<[CarVehicle]>,  // AVANT les closures
         onMapTap: @escaping (CLLocationCoordinate2D) -> Void = { _ in },
+        onPinpointMove: @escaping (CLLocationCoordinate2D) -> Void = { _ in },
         onAnnotationTap: @escaping (LocationAnnotation) -> Void = { _ in }
     ) {
         self._center = center
         self._annotations = annotations
         self._route = route
         self._showUserLocation = showUserLocation
+        self._isPinpointMode = isPinpointMode
+        self._pois = pois
+        self._cars = cars
         self.onMapTap = onMapTap
+        self.onPinpointMove = onPinpointMove
         self.onAnnotationTap = onAnnotationTap
     }
     
