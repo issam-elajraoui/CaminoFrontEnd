@@ -80,3 +80,8 @@
 "confirmLocation" = "Confirm location";
 "resolvingAddress" = "Finding address...";
 "dragMapToChoose" = "Drag map to choose";
+
+/* Driver Status */
+"available" = "Available";
+"enRoute" = "En Route";
+"busy" = "Busy";

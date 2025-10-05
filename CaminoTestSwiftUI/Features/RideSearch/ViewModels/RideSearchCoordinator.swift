@@ -1,10 +1,3 @@
-//
-//  RideSearchCoordinator.swift
-//  CaminoTestSwiftUI
-//
-//  Created by Issam EL MOUJAHID on 2025-09-29.
-//
-
 import SwiftUI
 import Foundation
 import MapKit
@@ -21,10 +14,12 @@ class RideSearchCoordinator: ObservableObject {
     @Published var pinpoint = Pinpoint()
     @Published var route = Route()
     @Published var driverSearch = DriverSearch()
+    @Published var availableDrivers = AvailableDrivers()
     
     // MARK: - UI State Properties
     @Published var mapPosition = MapCameraPosition.region(RideSearchConfig.ottawaRegion)
     @Published var annotations: [LocationAnnotation] = []
+    @Published var driverAnnotations: [DriverAnnotation] = []
     @Published var showUserLocation = false
     
     // MARK: - Form Properties
@@ -111,6 +106,13 @@ class RideSearchCoordinator: ObservableObject {
                 }
             }
             .store(in: &cancellables)
+        
+        // Observer drivers disponibles → transformer en annotations
+        availableDrivers.$drivers
+            .map { drivers in
+                drivers.map { DriverAnnotation(from: $0) }
+            }
+            .assign(to: &$driverAnnotations)
     }
     
     // MARK: - LocationService Setup
@@ -134,12 +136,18 @@ class RideSearchCoordinator: ObservableObject {
         if activeField == .none {
             activeField = .destination
         }
+        
+        // Charger drivers mock près de la position utilisateur ou Ottawa
+        let centerForDrivers = locationService?.currentLocation ?? MapboxConfig.fallbackRegion
+        availableDrivers.loadMockDrivers(nearCenter: centerForDrivers)
+        availableDrivers.startMockSimulation()
     }
     
     func onDisappear() {
         pinpoint.cleanupPinpointTasks()
         route.cancelRouteCalculation()
         addressSearch.cleanup()
+        availableDrivers.stopMockSimulation()
     }
     
     // MARK: - Location Permissions

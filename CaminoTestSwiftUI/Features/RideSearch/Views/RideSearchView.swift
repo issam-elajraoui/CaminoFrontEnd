@@ -373,6 +373,7 @@ struct RideSearchView: View {
         MapboxWrapper(
             center: $mapboxCenter,
             annotations: $viewModel.annotations,
+            driverAnnotations: $viewModel.driverAnnotations,
             route: $viewModel.route.currentRoute,
             showUserLocation: $viewModel.showUserLocation,
             isPinpointMode: $viewModel.pinpoint.isPinpointMode,

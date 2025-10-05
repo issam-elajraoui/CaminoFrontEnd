@@ -18,6 +18,7 @@ public struct MapboxWrapper: UIViewRepresentable {
     // MARK: - Propriétés bindées
     @Binding var center: CLLocationCoordinate2D
     @Binding var annotations: [LocationAnnotation]
+    @Binding var driverAnnotations: [DriverAnnotation]
     @Binding var route: RouteResult?
     @Binding var showUserLocation: Bool
     
@@ -39,6 +40,7 @@ public struct MapboxWrapper: UIViewRepresentable {
     init(
         center: Binding<CLLocationCoordinate2D>,
         annotations: Binding<[LocationAnnotation]>,
+        driverAnnotations: Binding<[DriverAnnotation]>,
         route: Binding<RouteResult?>,
         showUserLocation: Binding<Bool>,
         isPinpointMode: Binding<Bool>,
@@ -48,6 +50,7 @@ public struct MapboxWrapper: UIViewRepresentable {
     ) {
         self._center = center
         self._annotations = annotations
+        self._driverAnnotations = driverAnnotations
         self._route = route
         self._showUserLocation = showUserLocation
         self._isPinpointMode = isPinpointMode
@@ -166,28 +169,32 @@ public struct MapboxWrapper: UIViewRepresentable {
 
     // MARK: - Mise à jour Mapbox corrigée
     private func updateMapboxView(_ mapView: MapView, context: Context) {
-        
         print("🔴 updateMapboxView called - center: \(center)")
         print("🔴 isPinpointMode: \(isPinpointMode)")
-           
-           // ✅ BLOQUER complètement en mode pinpoint
+        
+        // ✅ TOUJOURS mettre à jour les annotations (drivers, pickup, destination)
+        updateAnnotations(mapView)
+        updateRoute(mapView)
+        updateUserLocation(mapView)
+        
+        // ✅ Bloquer SEULEMENT le mouvement de caméra en mode pinpoint
         guard !isPinpointMode else {
-               print("🔴 SKIPPING updateMapboxView - pinpoint mode active")
-               return
+            print("🔴 SKIPPING camera update - pinpoint mode active")
+            return
         }
-           
+        
+        // Reste du code pour le mouvement de caméra
         guard !isUpdatingCenter else { return }
-                
+        
         let validCenter = MapboxConfig.isValidCoordinate(center) ? center : MapboxConfig.fallbackRegion
         
-        // Vérifier si vraiment besoin d'update
         let currentCenter = mapView.mapboxMap.cameraState.center
-        let distanceThreshold = 0.001 // Plus conservateur
+        let distanceThreshold = 0.001
         let latDiff = abs(validCenter.latitude - currentCenter.latitude)
         let lonDiff = abs(validCenter.longitude - currentCenter.longitude)
         
         guard latDiff > distanceThreshold || lonDiff > distanceThreshold else {
-            return // Pas besoin d'update
+            return
         }
         
         let cameraOptions = CameraOptions(
@@ -195,17 +202,11 @@ public struct MapboxWrapper: UIViewRepresentable {
             zoom: MapboxConfig.sanitizeZoom(MapboxConfig.defaultZoom)
         )
         
-        // Animation plus courte pour réduire lag
         mapView.camera.ease(
             to: cameraOptions,
             duration: 0.2
         )
-        
-        updateAnnotations(mapView)
-        updateRoute(mapView)
-        updateUserLocation(mapView)
     }
-    
     
     private func setupCanadianTheme(_ mapView: MapView) {
         mapView.ornaments.attributionButton.isHidden = true
@@ -215,35 +216,82 @@ public struct MapboxWrapper: UIViewRepresentable {
     
     // MARK: - CORRECTION: Gestion des annotations simplifiée
     private func updateAnnotations(_ mapView: MapView) {
-        // CORRECTION: Utiliser pointAnnotationManager correctement
-        let pointAnnotationManager = mapView.annotations.makePointAnnotationManager()
+        print("🟢 updateAnnotations called")
         
-        // Supprimer les annotations existantes
+        // Charger l'icône PNG custom
+        addCustomCarIcon(mapView)
+       // addCustomMarkerIcon(mapView)
+        
+        let pointAnnotationManager = mapView.annotations.makePointAnnotationManager()
         pointAnnotationManager.annotations = []
         
-        // CORRECTION: Création annotations sans icônes custom (utiliser système)
-        var pointAnnotations: [PointAnnotation] = []
+        var allPointAnnotations: [PointAnnotation] = []
         
-        for annotation in annotations {
-            guard MapboxConfig.isValidCoordinate(annotation.coordinate) else {
-                print(" Coordonnée invalide ignorée: \(annotation.coordinate)")
-                continue
+        // 2. Drivers avec PNG custom
+        for driverAnnotation in driverAnnotations {
+            guard MapboxConfig.isValidCoordinate(driverAnnotation.coordinate) else { continue }
+            
+            var pointAnnotation = PointAnnotation(coordinate: driverAnnotation.coordinate)
+            pointAnnotation.iconImage = "custom-car-icon"  // Référence au PNG
+            
+            let color: UIColor
+            switch driverAnnotation.status {
+            case .available:
+                color = .systemGreen
+            case .enRoute:
+                color = .systemOrange
+            case .busy:
+                color = .systemGray
             }
             
-            var pointAnnotation = PointAnnotation(coordinate: annotation.coordinate)
-            
-            // CORRECTION: Utiliser couleur simple au lieu d'icône custom
-            let color = annotation.type == .pickup ? UIColor.red : UIColor.green
             pointAnnotation.iconColor = StyleColor(color)
-            pointAnnotation.iconSize = annotation.type == .pickup ?
-                MapboxConfig.Annotations.pickupSize/20 :
-                MapboxConfig.Annotations.destinationSize/20
+            pointAnnotation.iconSize = 1.5
+            pointAnnotation.iconRotate = driverAnnotation.bearing  // Rotation fonctionne
             
-            pointAnnotations.append(pointAnnotation)
+            allPointAnnotations.append(pointAnnotation)
         }
         
-        pointAnnotationManager.annotations = pointAnnotations
+        pointAnnotationManager.annotations = allPointAnnotations
+        print("🟢 Applied \(allPointAnnotations.count) annotations with custom PNG")
     }
+    // MARK: - Charger icône PNG custom depuis Assets
+    private func addCustomCarIcon(_ mapView: MapView) {
+        // Éviter de recharger si déjà présente
+        guard mapView.mapboxMap.image(withId: "custom-car-icon") == nil else { return }
+        
+        // Charger depuis Assets
+        guard let carImage = UIImage(named: "car-icon") else {
+            print("❌ car-icon PNG not found in Assets")
+            return
+        }
+        
+        // Ajouter au style Mapbox
+        try? mapView.mapboxMap.addImage(carImage, id: "custom-car-icon")
+        print("✅ Custom car PNG loaded")
+    }
+
+//    private func addCustomMarkerIcon(_ mapView: MapView) {
+//        guard mapView.mapboxMap.image(withId: "custom-marker-icon") == nil else { return }
+//        
+//        // Option 1: Utiliser un autre PNG si vous en avez un
+//        // guard let markerImage = UIImage(named: "marker-icon") else { return }
+//        
+//        // Option 2: Créer un cercle simple programmatiquement
+//        let size = CGSize(width: 30, height: 30)
+//        let renderer = UIGraphicsImageRenderer(size: size)
+//        
+//        let markerImage = renderer.image { context in
+//            let circle = UIBezierPath(ovalIn: CGRect(x: 3, y: 3, width: 24, height: 24))
+//            UIColor.white.setFill()
+//            circle.fill()
+//            UIColor.black.setStroke()
+//            circle.lineWidth = 2
+//            circle.stroke()
+//        }
+//        
+//        try? mapView.mapboxMap.addImage(markerImage, id: "custom-marker-icon")
+//        print("✅ Custom marker created")
+//    }
     
     // MARK: - CORRECTION: Gestion route ultra-simplifiée
     private func updateRoute(_ mapView: MapView) {
@@ -350,7 +398,7 @@ extension MapboxWrapper {
                 
                 guard MapboxConfig.isValidCoordinate(currentCenter) else { return }
                 
-                print("🟦 Pan ended - center: \(currentCenter)")
+                print(" Pan ended - center: \(currentCenter)")
                 self.parent.onPinpointMove(currentCenter)
             }
         }
