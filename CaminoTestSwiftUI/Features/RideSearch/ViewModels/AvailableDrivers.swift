@@ -1,9 +1,10 @@
+// CORRECTION dans AvailableDrivers.swift
+
 import Foundation
 import CoreLocation
 import MapKit
 import Combine
 
-// MARK: - ViewModel pour gestion des conducteurs disponibles
 @MainActor
 class AvailableDrivers: ObservableObject {
     
@@ -13,28 +14,47 @@ class AvailableDrivers: ObservableObject {
     // MARK: - Private Properties
     private var simulationTimer: Timer?
     private let maxDrivers = 15
-    private let updateInterval: TimeInterval = 3.0 // 3 secondes
-    private let movementSpeed: Double = 0.0001 // Déplacement léger en degrés
+    private let updateInterval: TimeInterval = 3.0
+    private let movementSpeed: Double = 0.00002  // ✅ Mouvement minimal (~2 mètres)
     
-    // MARK: - Configuration
-    private let spawnRadius: Double = 0.03 // ~3km en degrés (proche utilisateur)
+    // ✅ NOUVEAU : Positions fixes sur routes majeures d'Ottawa
+    private static let ottawaRoadPositions: [CLLocationCoordinate2D] = [
+        // Downtown Core
+        CLLocationCoordinate2D(latitude: 45.4215, longitude: -75.6972), // Wellington St
+        CLLocationCoordinate2D(latitude: 45.4235, longitude: -75.6980), // Bank St North
+        CLLocationCoordinate2D(latitude: 45.4190, longitude: -75.6950), // Rideau St
+        CLLocationCoordinate2D(latitude: 45.4200, longitude: -75.6930), // Sussex Drive
+        
+        // ByWard Market Area
+        CLLocationCoordinate2D(latitude: 45.4270, longitude: -75.6897), // Clarence St
+        CLLocationCoordinate2D(latitude: 45.4265, longitude: -75.6920), // George St
+        CLLocationCoordinate2D(latitude: 45.4280, longitude: -75.6910), // York St
+        
+        // Glebe / Bank St
+        CLLocationCoordinate2D(latitude: 45.4000, longitude: -75.6940), // Bank St South
+        CLLocationCoordinate2D(latitude: 45.3950, longitude: -75.6935), // Lansdowne
+        
+        // Centretown
+        CLLocationCoordinate2D(latitude: 45.4150, longitude: -75.7020), // Bronson Ave
+        CLLocationCoordinate2D(latitude: 45.4180, longitude: -75.7050), // Lyon St
+        
+        // Sandy Hill / Université
+        CLLocationCoordinate2D(latitude: 45.4220, longitude: -75.6830), // King Edward
+        CLLocationCoordinate2D(latitude: 45.4210, longitude: -75.6800), // Nicholas St
+        
+        // West End
+        CLLocationCoordinate2D(latitude: 45.4100, longitude: -75.7150), // Parkdale
+        CLLocationCoordinate2D(latitude: 45.4050, longitude: -75.7200), // Wellington West
+    ]
     
     // MARK: - Public Methods
     
-    /// Charge les conducteurs mock autour d'un centre donné
+    /// ✅ MODIFIER : Charge drivers UNE FOIS sur positions fixes
     func loadMockDrivers(nearCenter center: CLLocationCoordinate2D) {
-        let validCenter = MapboxConfig.isValidCoordinate(center) ? center : MapboxConfig.fallbackRegion
-        
-        drivers = (0..<maxDrivers).map { index in
-            let randomOffset = generateRandomOffset()
-            let coordinate = CLLocationCoordinate2D(
-                latitude: validCenter.latitude + randomOffset.latitude,
-                longitude: validCenter.longitude + randomOffset.longitude
-            )
-            
-            return AvailableDriver(
+        drivers = Self.ottawaRoadPositions.enumerated().map { index, coordinate in
+            AvailableDriver(
                 id: "mock-driver-\(index)",
-                coordinate: coordinate,
+                coordinate: coordinate,  // ✅ Position FIXE sur route
                 bearing: Double.random(in: 0...360),
                 status: randomStatus(),
                 vehicleType: randomVehicleType(),
@@ -42,7 +62,7 @@ class AvailableDrivers: ObservableObject {
             )
         }
         
-        print("✅ AvailableDrivers: Loaded \(drivers.count) mock drivers near \(validCenter)")
+        print("✅ AvailableDrivers: Loaded \(drivers.count) drivers on fixed road positions")
     }
     
     /// Démarre la simulation de mouvement
@@ -82,12 +102,12 @@ class AvailableDrivers: ObservableObject {
     
     // MARK: - Private Methods
     
-    /// Mise à jour positions (mouvement simple linéaire)
+    /// ✅ MODIFIER : Mouvement MINIMAL pour éviter drift hors routes
     private func updateDriverPositions() {
         drivers = drivers.map { driver in
             var updated = driver
             
-            // Déplacement simple selon bearing actuel
+            // ✅ Mouvement très minimal (2 mètres)
             let radians = driver.bearing * .pi / 180
             let latDelta = cos(radians) * movementSpeed
             let lonDelta = sin(radians) * movementSpeed
@@ -103,8 +123,8 @@ class AvailableDrivers: ObservableObject {
                 updated.lastUpdate = Date()
             }
             
-            // Changement bearing aléatoire occasionnel (10% chance)
-            if Double.random(in: 0...1) < 0.1 {
+            // ✅ Changement bearing plus fréquent (30% chance) pour effet visuel
+            if Double.random(in: 0...1) < 0.3 {
                 updated.bearing = Double.random(in: 0...360)
             }
             
@@ -112,18 +132,7 @@ class AvailableDrivers: ObservableObject {
         }
     }
     
-    /// Génère offset aléatoire dans le rayon de spawn
-    private func generateRandomOffset() -> (latitude: Double, longitude: Double) {
-        let angle = Double.random(in: 0...(2 * .pi))
-        let distance = Double.random(in: 0...spawnRadius)
-        
-        return (
-            latitude: cos(angle) * distance,
-            longitude: sin(angle) * distance
-        )
-    }
-    
-    /// Statut aléatoire (80% available, 20% autres)
+    /// Statut aléatoire (80% available)
     private func randomStatus() -> DriverStatus {
         let random = Double.random(in: 0...1)
         if random < 0.8 {
@@ -143,7 +152,6 @@ class AvailableDrivers: ObservableObject {
     
     // MARK: - Cleanup
     nonisolated deinit {
-        // CORRECTION: Timer invalidation peut être faite depuis n'importe quel thread
         simulationTimer?.invalidate()
     }
 }

@@ -3,11 +3,6 @@
 //  CaminoTestSwiftUI
 //
 
-//
-//  FloatingSearchCard.swift - CORRECTION FOCUS INDIVIDUEL
-//  CaminoTestSwiftUI
-//
-
 import SwiftUI
 import CoreLocation
 
@@ -15,7 +10,6 @@ struct FloatingSearchCard: View {
     
     @Binding var pickupAddress: String
     @Binding var destinationAddress: String
-    @Binding var activeField: ActiveLocationField
     
     let pickupError: String
     let destinationError: String
@@ -24,7 +18,7 @@ struct FloatingSearchCard: View {
     let onPickupTextChange: (String) -> Void
     let onDestinationTextChange: (String) -> Void
     
-    @FocusState.Binding var focusedField: ActiveLocationField?  // CORRECTION: Enum au lieu de Bool
+    @FocusState.Binding var focusedField: ActiveLocationField?
     
     private let fieldHeight: CGFloat = 50
     private let shadowRadius: CGFloat = 12
@@ -41,9 +35,8 @@ struct FloatingSearchCard: View {
                 TextField("pickupLocation".localized, text: $pickupAddress)
                     .font(.system(size: 16, weight: .medium))
                     .foregroundColor(.black)
-                    .focused($focusedField, equals: .pickup)  // CORRECTION: Focus sur .pickup
+                    .focused($focusedField, equals: .pickup)
                     .onChange(of: pickupAddress) { _, newValue in
-                        activeField = .pickup
                         onPickupTextChange(newValue)
                     }
                 
@@ -80,9 +73,8 @@ struct FloatingSearchCard: View {
                 TextField("destination".localized, text: $destinationAddress)
                     .font(.system(size: 16, weight: .medium))
                     .foregroundColor(.black)
-                    .focused($focusedField, equals: .destination)  // CORRECTION: Focus sur .destination
+                    .focused($focusedField, equals: .destination)
                     .onChange(of: destinationAddress) { _, newValue in
-                        activeField = .destination
                         onDestinationTextChange(newValue)
                     }
                 

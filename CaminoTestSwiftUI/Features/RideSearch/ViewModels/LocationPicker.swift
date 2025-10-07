@@ -45,12 +45,12 @@ class LocationPicker: ObservableObject {
     
     // MARK: - GPS Location Updates
     private func handleGPSLocationUpdate(_ location: CLLocationCoordinate2D?) {
-        guard let location = location,
-              MapboxConfig.isValidCoordinate(location) else {
-            handleGPSUnavailable()
+        guard let location = location, MapboxConfig.isValidCoordinate(location) else {
+            if pickupCoordinate == nil && !isRideForSomeoneElse {
+                handleGPSUnavailable()  // ✅ Seulement si vraiment nécessaire
+            }
             return
         }
-        
         if !isRideForSomeoneElse && isPickupFromGPS {
             updateGPSPickup(location)
         }
@@ -87,7 +87,6 @@ class LocationPicker: ObservableObject {
         
         if !isRideForSomeoneElse && isPickupFromGPS {
             pickupCoordinate = ottawaCoordinate
-            isPickupFromGPS = false
             gpsPickupAddress = "fallbackLocation".localized
             pickupAddress = gpsPickupAddress
             onPickupChanged?(ottawaCoordinate)

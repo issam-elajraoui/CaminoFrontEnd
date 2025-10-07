@@ -213,7 +213,9 @@ public struct MapboxWrapper: UIViewRepresentable {
         mapView.ornaments.logoView.isHidden = true
         mapView.backgroundColor = UIColor.white
     }
-    
+
+    private var annotationManagerId = "main-annotation-manager"
+
     // MARK: - CORRECTION: Gestion des annotations simplifiée
     private func updateAnnotations(_ mapView: MapView) {
         print("🟢 updateAnnotations called")
@@ -222,9 +224,24 @@ public struct MapboxWrapper: UIViewRepresentable {
         addCustomCarIcon(mapView)
        // addCustomMarkerIcon(mapView)
         
-        let pointAnnotationManager = mapView.annotations.makePointAnnotationManager()
-        pointAnnotationManager.annotations = []
         
+        
+        
+        
+        let pointAnnotationManager: PointAnnotationManager
+        
+        //let pointAnnotationManager = mapView.annotations.makePointAnnotationManager()
+        
+        
+        
+        
+        if let existingManager = mapView.annotations.annotationManagersById[annotationManagerId] as? PointAnnotationManager {
+                pointAnnotationManager = existingManager
+            } else {
+                pointAnnotationManager = mapView.annotations.makePointAnnotationManager(id: annotationManagerId)
+            }
+        
+        pointAnnotationManager.annotations = []
         var allPointAnnotations: [PointAnnotation] = []
         
         // 2. Drivers avec PNG custom

@@ -87,16 +87,15 @@ struct RideSearchView: View {
                     FloatingSearchCard(
                         pickupAddress: $viewModel.pickupAddress,
                         destinationAddress: $viewModel.destinationAddress,
-                        activeField: $viewModel.activeField,
                         pickupError: viewModel.driverSearch.pickupError,
                         destinationError: viewModel.driverSearch.destinationError,
                         showGPSIndicator: !viewModel.locationPicker.isRideForSomeoneElse && viewModel.locationPicker.isPickupFromGPS,
                         onPickupTextChange: { newText in
-                            viewModel.onLocationTextChanged(newText, for: .pickup)
+                            viewModel.onLocationTextChanged(newText, for: .pickup, currentFocus: focusedField)
                             updateDrawerItems()
                         },
                         onDestinationTextChange: { newText in
-                            viewModel.onLocationTextChanged(newText, for: .destination)
+                            viewModel.onLocationTextChanged(newText, for: .destination, currentFocus: focusedField)
                             updateDrawerItems()
                         },
                         focusedField: $focusedField
@@ -156,7 +155,7 @@ struct RideSearchView: View {
                             items: $drawerItems,
                             isVisible: $showDrawer,
                             onItemSelected: { suggestion in
-                                viewModel.selectSuggestion(suggestion)
+                                viewModel.selectSuggestion(suggestion, currentFocus: focusedField)
                                 focusedField = nil
                             },
                             cardBottomY: cardBottomY
@@ -206,6 +205,15 @@ struct RideSearchView: View {
             viewModel.pinpoint.isPinpointMode = true
             updateDrawerItems()
         }
+        .onChange(of: viewModel.requestFocusOn) { _, newFocus in
+            if let newFocus = newFocus {
+                focusedField = newFocus
+                // Reset après application
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    viewModel.requestFocusOn = nil
+                }
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             viewModel.recheckLocationPermissions()
         }
@@ -217,7 +225,6 @@ struct RideSearchView: View {
         }
         .onChange(of: focusedField) { _, newField in
             if newField != nil {
-                viewModel.activeField = newField ?? .none
                 viewModel.pinpoint.targetField = newField ?? .destination
                 updateDrawerItems()
                 showDrawer = true
@@ -382,7 +389,7 @@ struct RideSearchView: View {
                 showDrawer = false
             },
             onPinpointMove: { coordinate in
-                viewModel.onMapCenterChangedSimple(coordinate: coordinate)
+                viewModel.onMapCenterChangedSimple(coordinate: coordinate, currentFocus: focusedField)
             }
         )
         .ignoresSafeArea()

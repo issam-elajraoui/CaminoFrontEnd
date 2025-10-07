@@ -1,14 +1,8 @@
-//
-//  Pinpoint.swift
-//  CaminoTestSwiftUI
-//
-//  Created by Issam EL MOUJAHID on 2025-09-29.
-//
+// PARTIE 2 : MODIFICATIONS dans Pinpoint.swift
 
 import Foundation
 import CoreLocation
 
-// MARK: - Gestion du mode pinpoint (sélection sur carte)
 @MainActor
 class Pinpoint: ObservableObject {
     
@@ -37,11 +31,13 @@ class Pinpoint: ObservableObject {
         pinpointTask?.cancel()
     }
 
-    // MARK: - Map Center Changed
-    func onMapCenterChangedSimple(coordinate: CLLocationCoordinate2D) {
+    //  AJOUTER paramètre currentFocus
+    func onMapCenterChangedSimple(coordinate: CLLocationCoordinate2D, currentFocus: ActiveLocationField?) {
         guard isPinpointMode else { return }
         
-        onLocationChanged?(coordinate, targetField)
+        //  Utiliser currentFocus au lieu de targetField
+        let fieldToUpdate = currentFocus ?? .destination
+        onLocationChanged?(coordinate, fieldToUpdate)
         
         pinpointTask?.cancel()
         

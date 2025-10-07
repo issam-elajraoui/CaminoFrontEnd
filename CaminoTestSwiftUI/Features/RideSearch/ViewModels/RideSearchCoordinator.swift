@@ -33,7 +33,8 @@ class RideSearchCoordinator: ObservableObject {
     }
     
     // MARK: - Active Field
-    @Published var activeField: ActiveLocationField = .destination
+    //@Published var activeField: ActiveLocationField = .destination
+    @Published var requestFocusOn: ActiveLocationField? = nil
     @Published var showSuggestions = false
     
     // MARK: - Location Permission
@@ -43,6 +44,8 @@ class RideSearchCoordinator: ObservableObject {
     private var locationService: LocationService?
     private var destinationCoordinate: CLLocationCoordinate2D?
     private var cancellables = Set<AnyCancellable>()
+    private var hasInitializedPickup = false
+
     
     // MARK: - Computed Properties
     var displayPickupAddress: String {
@@ -76,7 +79,7 @@ class RideSearchCoordinator: ObservableObject {
             self?.handlePinpointLocationChanged(coordinate, for: field)
         }
         
-        // Observer pinpointAddress pour mettre à jour le bon champ
+        // Observer pinpointAddress
         pinpoint.$pinpointAddress
             .filter { !$0.isEmpty && $0 != "Position invalide" && $0 != "Adresse introuvable" }
             .sink { [weak self] address in
@@ -93,21 +96,15 @@ class RideSearchCoordinator: ObservableObject {
             }
             .store(in: &cancellables)
         
-        // Observer showSuggestions from addressSearch
+        // Observer showSuggestions
         addressSearch.$suggestions
             .map { !$0.isEmpty }
             .assign(to: &$showSuggestions)
         
-        $activeField
-            .sink { [weak self] newActiveField in
-                guard let self = self else { return }
-                if self.pinpoint.isPinpointMode && newActiveField != .none {
-                    self.pinpoint.targetField = newActiveField
-                }
-            }
-            .store(in: &cancellables)
+        //  SUPPRIMER cet observer $activeField complètement
+        // $activeField.sink { ... }.store(in: &cancellables)
         
-        // Observer drivers disponibles → transformer en annotations
+        // Observer drivers disponibles
         availableDrivers.$drivers
             .map { drivers in
                 drivers.map { DriverAnnotation(from: $0) }
@@ -133,11 +130,9 @@ class RideSearchCoordinator: ObservableObject {
     func onViewAppear() {
         checkLocationPermissions()
         
-        if activeField == .none {
-            activeField = .destination
-        }
+        //  Demander focus sur destination au démarrage
+        requestFocusOn = .destination
         
-        // Charger drivers mock près de la position utilisateur ou Ottawa
         let centerForDrivers = locationService?.currentLocation ?? MapboxConfig.fallbackRegion
         availableDrivers.loadMockDrivers(nearCenter: centerForDrivers)
         availableDrivers.startMockSimulation()
@@ -151,6 +146,29 @@ class RideSearchCoordinator: ObservableObject {
     }
     
     // MARK: - Location Permissions
+//    func checkLocationPermissions() {
+//        guard let locationService = locationService else { return }
+//        
+//        let status = locationService.authorizationStatus
+//        
+//        switch status {
+//        case .notDetermined:
+//            locationService.requestLocationPermission()
+//            
+//        case .denied, .restricted:
+//            showLocationPermission = true
+//            
+//        case .authorizedWhenInUse, .authorizedAlways:
+//            locationService.startLocationUpdates()
+//            if locationService.currentLocation != nil {
+//                showUserLocation = true
+//                centerOnUserLocationWithService()
+//            }
+//            
+//        @unknown default:
+//            locationService.requestLocationPermission()
+//        }
+//    }
     func checkLocationPermissions() {
         guard let locationService = locationService else { return }
         
@@ -165,13 +183,65 @@ class RideSearchCoordinator: ObservableObject {
             
         case .authorizedWhenInUse, .authorizedAlways:
             locationService.startLocationUpdates()
+            showUserLocation = true
+            
             if locationService.currentLocation != nil {
-                showUserLocation = true
                 centerOnUserLocationWithService()
+                initializePickupFromGPS()
+            } else {
+                // Observer le GPS et initialiser dès qu'il arrive
+                setupPickupInitializationObserver()
             }
             
         @unknown default:
             locationService.requestLocationPermission()
+        }
+    }
+    
+    private func setupPickupInitializationObserver() {
+        guard let locationService = locationService else { return }
+        
+        locationService.$currentLocation
+            .compactMap { $0 }
+            .prefix(1)  // ✅ Prendre seulement la PREMIÈRE valeur non-nil
+            .sink { [weak self] location in
+                Task { @MainActor [weak self] in
+                    self?.centerOnUserLocationWithService()
+                    self?.initializePickupFromGPS()
+                }
+            }
+            .store(in: &cancellables)
+    }
+    
+    private func initializePickupFromGPS() {
+        guard !hasInitializedPickup,
+              let gpsLocation = locationService?.currentLocation else {
+            return
+        }
+        
+        hasInitializedPickup = true
+        
+        Task {
+            do {
+                let address = try await GeocodeManager.shared.reverseGeocode(gpsLocation)
+                await MainActor.run {
+                    pickupAddress = address.isEmpty ? "Position actuelle" : address
+                    locationPicker.setPickupCoordinate(gpsLocation)
+                    
+                    // ✅ Demander focus sur destination après init GPS
+                    requestFocusOn = .destination
+                    
+                    print("✅ Pickup initialized from GPS: \(address)")
+                }
+            } catch {
+                await MainActor.run {
+                    pickupAddress = "Position actuelle"
+                    locationPicker.setPickupCoordinate(gpsLocation)
+                    
+                    // ✅ Demander focus sur destination même en erreur
+                    requestFocusOn = .destination
+                }
+            }
         }
     }
     
@@ -203,7 +273,7 @@ class RideSearchCoordinator: ObservableObject {
     }
     
     // MARK: - Address Search
-    func onLocationTextChanged(_ newText: String, for field: ActiveLocationField) {
+    func onLocationTextChanged(_ newText: String, for field: ActiveLocationField, currentFocus: ActiveLocationField?) {
         switch field {
         case .pickup:
             locationPicker.setPickupAddress(newText)
@@ -219,18 +289,23 @@ class RideSearchCoordinator: ObservableObject {
         }
     }
     
-    func selectSuggestion(_ suggestion: AddressSuggestion) {
+    func selectSuggestion(_ suggestion: AddressSuggestion, currentFocus: ActiveLocationField?) {
         Task {
             let resolvedSuggestion = await addressSearch.resolveCoordinates(for: suggestion)
             
             await MainActor.run {
-                applySuggestionSelection(resolvedSuggestion)
+                applySuggestionSelection(resolvedSuggestion, currentFocus: currentFocus)
             }
         }
     }
     
-    private func applySuggestionSelection(_ suggestion: AddressSuggestion) {
-        switch activeField {
+    private func applySuggestionSelection(_ suggestion: AddressSuggestion, currentFocus: ActiveLocationField?) {
+        guard let focus = currentFocus else {
+            // Pas de focus actif
+            return
+        }
+        
+        switch focus {
         case .pickup:
             locationPicker.setPickupAddress(suggestion.displayText)
             pickupAddress = suggestion.displayText
@@ -246,7 +321,9 @@ class RideSearchCoordinator: ObservableObject {
         
         showSuggestions = false
         addressSearch.suggestions = []
-        activeField = .destination
+        
+        // Demander focus sur destination
+        requestFocusOn = .destination
     }
     
     // MARK: - Location Management
@@ -336,16 +413,16 @@ class RideSearchCoordinator: ObservableObject {
     
     func disablePinpointMode() {
         pinpoint.disablePinpointMode()
-        activeField = .destination
+        requestFocusOn = .destination
     }
     
-    func onMapCenterChangedSimple(coordinate: CLLocationCoordinate2D) {
-        pinpoint.onMapCenterChangedSimple(coordinate: coordinate)
+    func onMapCenterChangedSimple(coordinate: CLLocationCoordinate2D, currentFocus: ActiveLocationField?) {
+        pinpoint.onMapCenterChangedSimple(coordinate: coordinate, currentFocus: currentFocus)
     }
     
     // MARK: - Map Interaction
     func handleMapTap(at location: CGPoint) {
-        activeField = .destination
+        requestFocusOn = .destination
         showSuggestions = false
     }
     
@@ -380,6 +457,8 @@ class RideSearchCoordinator: ObservableObject {
                     mapPosition = .region(newRegion)
                 }
             }
+            // Option A : Ne touche PAS au pickup - centre seulement la carte
+            
         } catch let locationError as LocationError {
             await MainActor.run {
                 driverSearch.userFriendlyErrorMessage = locationError.localizedDescription(language: LocalizationManager.shared.currentLanguage)
@@ -392,10 +471,9 @@ class RideSearchCoordinator: ObservableObject {
             }
         }
     }
-    
     // MARK: - Driver Search
     func searchDrivers() async {
-        activeField = .destination
+        requestFocusOn = .destination
         showSuggestions = false
         
         driverSearch.updatePickupData(
