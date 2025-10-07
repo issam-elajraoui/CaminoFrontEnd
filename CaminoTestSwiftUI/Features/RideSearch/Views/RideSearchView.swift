@@ -64,14 +64,15 @@ struct RideSearchView: View {
                 
                 // 2. PINPOINT
                 if !showDrawer {
-                    VStack {
+                    VStack(spacing: 0) {
                         Spacer()
-                            .frame(height: geometry.size.height * 0.5)
                         
                         PinpointIndicator(
                             isActive: true,
                             isResolving: viewModel.pinpoint.isResolvingAddress
                         )
+                        .frame(height: 50)
+                        .offset(y: -55)  // Décale vers le HAUT de la moitié de sa hauteur
                         
                         Spacer()
                     }
