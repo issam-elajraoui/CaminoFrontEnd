@@ -203,7 +203,25 @@ struct RideSearchView: View {
             viewModel.setLocationService(locationService)
             viewModel.onViewAppear()
             setupMapboxObserver()
-            viewModel.pinpoint.isPinpointMode = true
+            
+            // ✅ NOUVEAU : Observer et attendre les coordonnées GPS valides
+            locationService.$currentLocation
+                .compactMap { $0 } // Seulement les valeurs non-nil
+                .filter { MapboxConfig.isValidCoordinate($0) } // Seulement les coordonnées valides
+                .prefix(1) // Prendre seulement la première valeur valide
+                .sink { validLocation in
+                    // Centrer la carte sur le GPS
+                    mapboxCenter = validLocation
+                    
+                    // Activer pinpoint mode après un court délai pour laisser la carte se positionner
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        viewModel.pinpoint.isPinpointMode = true
+                    }
+                    
+                    print("✅ Map centered on valid GPS: \(validLocation)")
+                }
+                .store(in: &cancellables)
+            
             updateDrawerItems()
         }
         .onChange(of: viewModel.requestFocusOn) { _, newFocus in

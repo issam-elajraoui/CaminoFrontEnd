@@ -15,7 +15,7 @@ public struct MapboxConfig {
     // MARK: - Configuration principale
     public static let styleURL = "mapbox://styles/mapbox/light-v11"
     public static let fallbackRegion = CLLocationCoordinate2D(latitude: 45.4215, longitude: -75.6972) // Ottawa
-    public static let defaultZoom: Double = 12.0
+    public static let defaultZoom: Double = 15.5
 
     
     // MARK: - Limites de sécurité

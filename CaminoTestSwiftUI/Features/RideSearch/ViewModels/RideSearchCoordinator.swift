@@ -127,10 +127,28 @@ class RideSearchCoordinator: ObservableObject {
     }
     
     // MARK: - View Lifecycle
+//    func onViewAppear() {
+//        checkLocationPermissions()
+//        
+//        //  Demander focus sur destination au démarrage
+//        requestFocusOn = .destination
+//        
+//        let centerForDrivers = locationService?.currentLocation ?? MapboxConfig.fallbackRegion
+//        availableDrivers.loadMockDrivers(nearCenter: centerForDrivers)
+//        availableDrivers.startMockSimulation()
+//    }
     func onViewAppear() {
+        // NOUVEAU : Centrer sur GPS si disponible, sinon Ottawa
+        if let userLocation = locationService?.currentLocation {
+            mapPosition = .region(MKCoordinateRegion(
+                center: userLocation,
+                span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
+            ))
+        }
+        
         checkLocationPermissions()
         
-        //  Demander focus sur destination au démarrage
+        // Demander focus sur destination au démarrage
         requestFocusOn = .destination
         
         let centerForDrivers = locationService?.currentLocation ?? MapboxConfig.fallbackRegion

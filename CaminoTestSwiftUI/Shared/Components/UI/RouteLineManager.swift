@@ -111,16 +111,14 @@ public class RouteLineManager {
             updatedSource.data = .geometry(.lineString(lineString))
             
             do {
-                try mapView.mapboxMap.updateGeoJSONSource(withId: Style.sourceId, geoJSON: .geometry(.lineString(lineString)))
-            } catch {
-                print("⚠️ RouteLineManager: Erreur update segment - \(error)")
+                mapView.mapboxMap.updateGeoJSONSource(withId: Style.sourceId, geoJSON: .geometry(.lineString(lineString)))
             }
             
             // Attendre avant segment suivant
             try? await Task.sleep(for: .seconds(timePerSegment))
         }
         
-        print("✅ RouteLineManager: Animation complète")
+        print(" RouteLineManager: Animation complète")
     }
     
     // MARK: - Cleanup
